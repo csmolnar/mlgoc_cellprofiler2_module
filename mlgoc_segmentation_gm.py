@@ -8,13 +8,22 @@ def mlgoc_segmentation_gm(parameters_pf,
                           kappa,
                           extended_initial_phi,
                           optimization_parameters):
+    """ Main function for multi-layered 'gas of circles' segmentation
+    
+    :param parameters_pf: 
+    :param extended_image: 
+    :param data_parameters: 
+    :param kappa: 
+    :param extended_initial_phi: 
+    :param optimization_parameters: 
+    :return: 
+    """
 
     extended_image_size = np.shape(extended_image)
     extended_image_height = extended_image_size[0]
     extended_image_width = extended_image_size[1]
 
-
-    maxd = int(max( map(lambda x:x['d'], parameters_pf) ))
+    maxd = int(max(map(lambda x:x['d'], parameters_pf)))
     image_height = extended_image_height - 2*maxd
     image_width = extended_image_width - 2*maxd
 
@@ -41,7 +50,18 @@ def ml_evolution(init_phi,
                  parameters,
                  data_parameters,
                  ext_image):
-
+    """ Gradient descent algorithm for phase field optimization
+    
+    :param init_phi: 
+    :param kappa: weight of overlap penalty (real number)
+    :param tolerance: 
+    :param max_iterations: 
+    :param save_frequency: 
+    :param parameters: 
+    :param data_parameters: 
+    :param ext_image: padded input image
+    :return: 
+    """
     linear_operator = compute_linear_part(init_phi, parameters)
     old_phi = init_phi
     converged = False
@@ -50,18 +70,22 @@ def ml_evolution(init_phi,
 
     while not converged:
 
-        if num_of_iterations>0 and num_of_iterations%save_frequency==0:
+        if save_frequency > 0 and num_of_iterations % save_frequency == 0:
             np.savetxt('iter_{0:04d}.csv'.format(num_of_iterations),old_phi)
 
-        functional_derivative, overlap_derivative = ml_evolve_step(old_phi,linear_operator,parameters,data_parameters,ext_image,kappa)
+        functional_derivative, overlap_derivative = ml_evolve_step(old_phi,
+                                                                   linear_operator,
+                                                                   parameters,
+                                                                   data_parameters,
+                                                                   ext_image,kappa)
         functional_derivative = functional_derivative + overlap_derivative
         max_functional_derivative = np.max(np.abs(functional_derivative))
         delta_t = 1.0/(10.0*max_functional_derivative)
         delta_phi = -delta_t * functional_derivative
         new_phi = old_phi + delta_phi
-        mean_functional_derivative = np.mean( np.abs( functional_derivative ) )
+        mean_functional_derivative = np.mean(np.abs(functional_derivative ))
 
-        if mean_functional_derivative<tolerance or num_of_iterations>=max_iterations:
+        if mean_functional_derivative < tolerance or num_of_iterations >= max_iterations:
             converged = True
         num_of_iterations = num_of_iterations+1
         print('Iteration {0:4d}'.format(num_of_iterations))
@@ -75,9 +99,18 @@ def ml_evolve_step(old_phi,
                    data_parameters,
                    image,
                    kappa):
-
+    """ Computes the functional derivative of the multi-layered phase field
+    
+    :param old_phi: 
+    :param linear_operator: 
+    :param parameters: 
+    :param data_parameters: 
+    :param image: padded input image
+    :param kappa: weight of overlap penalty (real number)
+    :return: 
+    """
     phase_size = np.shape(old_phi)
-    if old_phi.ndim>2:
+    if old_phi.ndim > 2:
         layer_number = phase_size[-1]
     else:
         layer_number = 1
@@ -110,28 +143,22 @@ def ml_evolve_step(old_phi,
 def compute_linear_part(init_phi, parameters):
 
     phase_size = np.shape(init_phi)
-    if init_phi.ndim>2:
+    if init_phi.ndim > 2:
         layer_number = phase_size[2]
     else:
         layer_number = 1
 
     linear_operator = [None] * layer_number
-    # print(layer_number)
     for i in range(layer_number):
         temp_params = parameters[i]
-        # print(temp_params)
-        D = temp_params['D']
+        D_pf = temp_params['D']
         lambda_pf = temp_params['lambda']
         beta_pf = temp_params['beta']
         ny = phase_size[0]
         nx = phase_size[1]
-        # x = np.arange(-math.pi, math.pi, 2 * math.pi / nx) * (nx - 1) / nx
-        # y = np.arange(-math.pi, math.pi, 2 * math.pi / ny) * (ny - 1) / ny
-        # kx, ky = np.meshgrid(x,y)
         k2 = compute_neg_laplacian(ny, nx, temp_params['discrete'])
         interaction_operator = compute_interaction_operator(k2, temp_params)
-        linear_operator[i] = k2 * (D - beta_pf * interaction_operator) - lambda_pf
-
+        linear_operator[i] = k2 * (D_pf - beta_pf * interaction_operator) - lambda_pf
     return linear_operator
 
 
@@ -153,7 +180,13 @@ def compute_neg_laplacian(height, width, discrete):
 
 
 def compute_interaction_operator(k2, parameters):
-    if parameters['marie']:
+    """ Computes the interaction operator in Fourier space
+    
+    :param k2: negative Laplacian operator, used to get the operator size
+    :param parameters: dictionary that contains the keys 'd' and 'epsilon' to control interaction range
+    :return: 
+    """
+    if not parameters['marie']:
         return 1.0 / (1.0 + k2)
     else:
         k2_size = np.shape(k2)
@@ -174,13 +207,13 @@ def compute_interaction_operator(k2, parameters):
 
 def compute_imagepart_additivetanh(phi, image, data_parameters):
     """ Computes the functional derivative of the additive image term
-
-    Keyword arguments:
-    phi -- HxWXL sized matrix, the multi-layered phase field, where H and W are the height and width of the image,
+    
+    :param phi: HxWXL sized matrix, the multi-layered phase field, where H and W are the height and width of the image,
             and L is the number of layers
-    image -- HxW sized matrix, the input image
-    data_parameters -- a map that contains the parameters of the data term 
-            including the keys {'muin', 'sigmain', 'muout', 'sigmaout', 'gamma2'}
+    :param image: HxW sized matrix, the input image
+    :param data_parameters: a dictionary that contains the parameters of the data term 
+            including the keys {'muin', 'sigmain', 'muout', 'sigmaout', 'gamma1', 'gamma2'}
+    :return: 
     """
     tanh_phi = np.tanh(phi)
     phase_size = np.shape(phi)
@@ -191,10 +224,8 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
         layer_number = 1
         tilde_phi_plus = tanh_phi + 1.0/2
 
-    # tilde_phi_plus = np.sum(tanh_phi, axis=-1) + phase_size[-1] / 2
     tilde_phi_plus2 = tilde_phi_plus * tilde_phi_plus
     sech2_phi = np.power(1. / np.cosh(phi), 2)
-    # print(np.shape(sech2_phi))
     muin = data_parameters['muin']
     sigmain = data_parameters['sigmain']
     muout = data_parameters['muout']
@@ -214,7 +245,7 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
     intensity_part_common = intensity_part_nominator / intensity_part_denominator
     image_linear_part = np.zeros(phase_size)
 
-    if layer_number==1:
+    if layer_number == 1:
         image_linear_part = intensity_part_common * sech2_phi
     else:
         for i in range(layer_number):

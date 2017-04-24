@@ -57,6 +57,7 @@ def integrand_F10(x, r0, d_min, epsilon, interaction_type):
 
 
 def phi(x, d_min, epsilon, interaction_type):
+    # TODO: implement other interaction functions
     f = np.zeros(np.shape(x))
     if interaction_type.lower() == 'exponential':
         f = np.exp(-x/d_min)
