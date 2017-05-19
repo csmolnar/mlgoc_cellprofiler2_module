@@ -74,7 +74,9 @@ from cellprofiler.cpmath.cpmorphology import relabel
 import cellprofiler.cpmath.outline
 import cellprofiler.objects
 from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
-import compute_mlgoc_parameters
+import compute_mlgoc_parameters as cmp
+import mlgoc_segmentation_gm as mlgoc
+import centrosome.outline
 
 LIMIT_NONE = "Continue"
 LIMIT_TRUNCATE = "Truncate"
@@ -82,15 +84,14 @@ LIMIT_ERASE = "Erase"
 
 # Settings text which is referenced in various places in the help
 
-PREFERRED_RADIUS_TEXT = "Preferred radius in pixels"
-
 
 class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             
     variable_revision_number = 1
     category =  "Object Processing"
     module_name = "IdentifyPrimaryObjectsMLGOC"
-    
+
+
     def create_settings(self):
         
         self.image_name = cps.ImageNameSubscriber(
@@ -99,7 +100,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         self.seed_objects = cps.ObjectNameSubscriber(
             "Select input/seed objects", "Nuclei", doc="""
-            What did you call the initial seeds for correction?""")
+            What did you call the initial seeds for correction? Only used in case of manual initialization.""")
 
         self.object_name = cps.ObjectNameProvider(
             "Name the primary objects to be identified",
@@ -107,11 +108,11 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             Enter the name that you want to call the objects identified by this module.""")
 
         self.preferred_radius = cps.Integer(
-            PREFERRED_RADIUS_TEXT, 20, doc="""
+            "Preferred radius in pixels", 20, doc="""
             Give the approximate radius of object to identify.""")
 
-        self.number_of_layers_string = cps.Text(
-            "Number of layers", 'Automatic', doc="""
+        self.number_of_layers = cps.Integer(
+            "Number of layers", 4, doc="""
             Give the number of overlapping layers. The default number is 4.""")
 
         self.mu_in = cps.Float(
@@ -161,7 +162,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
     def settings(self):
         return [self.image_name, self.seed_objects, self.object_name,
-                self.preferred_radius, self.number_of_layers_string,
+                self.preferred_radius, self.number_of_layers,
                 self.mu_in, self.sigma_in, self.mu_out, self.sigma_out,
                 self.data_weight, self.initialization_type,
                 self.maximum_iterations, self.exclude_border_objects,
@@ -177,7 +178,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             
     def help_settings(self):
         return [self.image_name, self.seed_objects, self.object_name,
-                self.preferred_radius, self.number_of_layers_string,
+                self.preferred_radius, self.number_of_layer,
                 self.mu_in, self.sigma_in, self.mu_out, self.sigma_out,
                 self.data_weight, self.initialization_type,
                 self.maximum_iterations, self.exclude_border_objects,
@@ -186,7 +187,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
     def visible_settings(self):
         vv = [self.image_name, self.seed_objects, self.object_name,
-                self.preferred_radius, self.number_of_layers_string,
+                self.preferred_radius, self.number_of_layers,
                 self.mu_in, self.sigma_in, self.mu_out, self.sigma_out,
                 self.data_weight, self.initialization_type,
                 self.maximum_iterations, self.exclude_border_objects,
@@ -213,6 +214,12 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         image_width = image.shape[0]
         image_height = image.shape[1]
 
+        objects = workspace.object_set.get_objects(self.seed_objects.value)
+        labels_in = objects.unedited_segmented.copy()
+        labels_in_mask = labels_in>0
+
+        self.number_of_layers = int(self.number_of_layers_string.value)
+
         alpha_tilde = 1.0
         lambda_tilde = 1.0
         rhatstar = 1.0
@@ -223,24 +230,26 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                                               self.preferred_radius.value,
                                                               rhatstar)
 
-        prior_phase_field_parameters = [p[1] for i in range(3)]
+        prior_phase_field_parameters = [p[1] for i in range(self.number_of_layers)]
 
         objects = workspace.object_set.get_objects(self.seed_objects.value)
 
         gradient_weight = 0.0
 
-        data_parameters = {'muin': self.mu_in,
-                           'muout': self.mu_out,
-                           'sigmain': self.sigma_in,
-                           'sigmaout': self.sigma_out,
+        data_parameters = {'muin': self.mu_in.value,
+                           'muout': self.mu_out.value,
+                           'sigmain': self.sigma_in.value,
+                           'sigmaout': self.sigma_out.value,
                            'gamma1': gradient_weight,
-                           'gamma2': self.data_weight}
+                           'gamma2': self.data_weight.value}
 
         maxd = int(max(map(lambda x: x['d'], prior_phase_field_parameters)) )
 
         extended_image = np.pad(image, ((2*maxd,2*maxd),(2*maxd,2*maxd)), 'constant', constant_values=(self.mu_out.value,))
-        extended_image_height = extended_image.shape[0]
-        extended_image_width = extended_image.shape[1]
+        self.extended_image_height = extended_image.shape[0]
+        self.extended_image_width = extended_image.shape[1]
+
+        extended_image[extended_image>data_parameters['muout']+4*data_parameters['muin']] = data_parameters['muout']+4*data_parameters['muin']
 
         # distribution of objects into several layers
 
@@ -248,7 +257,14 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                    'max_iterations': self.maximum_iterations.value,
                                    'save_frequency': -1}
 
-        # initial_phi = self.initialize_phi()
+        initial_phi = self.initialize_phi(workspace)
+
+        final_phi = mlgoc_segmentation_gm.mlgoc_segmentation_gm(
+            prior_phase_field_parameters,
+            extended_image,
+            data_parameters,
+            kappa,
+            initial_phi,optimization_parameters)
 
         if self.show_window:
             workspace.display_data.image = extended_image
@@ -330,133 +346,22 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         #                         parent_image = image)
         #     workspace.image_set.add(self.save_outlines.value, out_img)
 
-    def initialize_phi(self, initial_phi):
+    def initialize_phi(self):
+        if self.initialization_type == 'Seeds (manual)':
+            pass
+        elif self.initialization_type == 'Circular seeds (manual)':
+            pass
+        elif self. initialization_type == 'Neutral':
+            pass
+        else:
+            pass
+        init_phi = np.random.normal(0, 0.1,
+                                (self.extended_image_height, self.extended_image_width, self.number_of_layers))
+        return init_phi
+
+
+    def create_contour_image(self, input_image, ml_phi, threshold):
         pass
-
-    def a_trous(self, image, level):
-        '''
-        Calculates a trous wavelet in image up to the level
-        '''
-        wavelet = np.zeros((image.shape[0],image.shape[1],level))
-        cvol = np.zeros((image.shape[0],image.shape[1],level))
-        cvol[:,:,0] = image
-        
-        for i in xrange(1,level):
-            ccimg = self.calculateC(image, i-1)
-            cvol[:,:,i] = ccimg
-            wavelet[:,:,i-1] = cvol[:,:,i-1] - cvol[:,:,i]
-        wavelet[:,:,level-1] = cvol[:,:,level-1]
-
-        return wavelet
-
-    def calculateC(self, img, level):
-        '''
-        '''
-        rlevel = 2**level
-        if img.shape[0] < 2*rlevel or img.shape[1] < 2*rlevel:
-            return img
-
-        pimg = np.pad(img, 2*rlevel, 'reflect')
-        
-        def conv_filter(sigma, size, gap = 0):
-            filt = np.zeros(((size-1)*(gap+1)+1, (size-1)*(gap+1)+1),dtype='float')
-            middle = size / 2
-            for i in xrange(size):
-                for j in xrange(size):
-                    dist = np.sqrt((middle-i+0.5)**2 + (middle-j+0.5)**2)
-                    normpdf = scipy.stats.norm.pdf(dist/sigma) / sigma
-                    filt[(i-1)*(gap+1)+1, (j-1)*(gap+1)+1] = normpdf
-            filt = filt / filt.sum()
-            return filt
-
-        filt = conv_filter(1, 5, level**2)
-        cimg = scipy.ndimage.filters.convolve(pimg,filt)
-        cimg = cimg[2*rlevel:img.shape[0]+2*rlevel, 2*rlevel:img.shape[1]+2*rlevel]
-        return cimg
-
-    def circular_average_filter(self, image, radius):
-        '''Blur an image using a circular averaging filter (pillbox)  
-        image - grayscale 2-d image
-        radii - radius of filter in pixels
-
-        The filter will be within a square matrix of side 2*radius+1
-
-        This code is translated directly from MATLAB's fspecial function
-        '''
-        crad = np.ceil(radius-0.5)
-        x,y = np.mgrid[-crad:crad+1,-crad:crad+1].astype(float) 
-        maxxy = np.maximum(abs(x),abs(y))
-        minxy = np.minimum(abs(x),abs(y))
-
-        m1 = ((radius **2 < (maxxy+0.5)**2 + (minxy-0.5)**2)*(minxy-0.5) + 
-          (radius**2 >= (maxxy+0.5)**2 + (minxy-0.5)**2) * 
-          np.real(np.sqrt(np.asarray(radius**2 - (maxxy + 0.5)**2,dtype=complex)))) 
-        m2 = ((radius**2 >  (maxxy-0.5)**2 + (minxy+0.5)**2)*(minxy+0.5) + 
-          (radius**2 <= (maxxy-0.5)**2 + (minxy+0.5)**2)*
-          np.real(np.sqrt(np.asarray(radius**2 - (maxxy - 0.5)**2,dtype=complex))))
-
-        sgrid = ((radius**2*(0.5*(np.arcsin(m2/radius) - np.arcsin(m1/radius)) + 
-              0.25*(np.sin(2*np.arcsin(m2/radius)) - np.sin(2*np.arcsin(m1/radius)))) - 
-             (maxxy-0.5)*(m2-m1) + (m1-minxy+0.5)) *  
-             ((((radius**2 < (maxxy+0.5)**2 + (minxy+0.5)**2) & 
-             (radius**2 > (maxxy-0.5)**2 + (minxy-0.5)**2)) | 
-             ((minxy == 0) & (maxxy-0.5 < radius) & (maxxy+0.5 >= radius)))) ) 
-
-        sgrid = sgrid + ((maxxy+0.5)**2 + (minxy+0.5)**2 < radius**2) 
-        sgrid[crad,crad] = np.minimum(np.pi*radius**2,np.pi/2) 
-        if ((crad>0) and (radius > crad-0.5) and (radius**2 < (crad-0.5)**2+0.25)): 
-            m1  = np.sqrt(radius**2 - (crad - 0.5)**2) 
-            m1n = m1/radius 
-            sg0 = 2*(radius**2*(0.5*np.arcsin(m1n) + 0.25*np.sin(2*np.arcsin(m1n)))-m1*(crad-0.5))
-            sgrid[2*crad,crad]   = sg0
-            sgrid[crad,2*crad]   = sg0
-            sgrid[crad,0]        = sg0 
-            sgrid[0,crad]        = sg0
-            sgrid[2*crad-1,crad] = sgrid[2*crad-1,crad] - sg0
-            sgrid[crad,2*crad-1] = sgrid[crad,2*crad-1] - sg0
-            sgrid[crad,1]        = sgrid[crad,1]        - sg0 
-            sgrid[1,crad]        = sgrid[1,crad]        - sg0 
-
-        sgrid[crad,crad] = np.minimum(sgrid[crad,crad],1) 
-        kernel = sgrid/sgrid.sum()
-        output = scipy.ndimage.filters.convolve(image, kernel, mode='constant')
-
-        return output
-
-    def smooth_image(self, image, mask):
-        """Apply the smoothing filter to the image"""
-        
-        filter_size = self.smoothing_filter_size.value
-        if filter_size == 0:
-            return image
-        sigma = filter_size / 2.35
-        #
-        # We not only want to smooth using a Gaussian, but we want to limit
-        # the spread of the smoothing to 2 SD, partly to make things happen
-        # locally, partly to make things run faster, partly to try to match
-        # the Matlab behavior.
-        #
-        filter_size = max(int(float(filter_size) / 2.0),1)
-        f = (1/np.sqrt(2.0 * np.pi ) / sigma * 
-             np.exp(-0.5 * np.arange(-filter_size, filter_size+1)**2 / 
-                    sigma ** 2))
-        def fgaussian(image):
-            output = scipy.ndimage.convolve1d(image, f,
-                                              axis = 0,
-                                              mode='constant')
-            return scipy.ndimage.convolve1d(output, f,
-                                            axis = 1,
-                                            mode='constant')
-        #
-        # Use the trick where you similarly convolve an array of ones to find 
-        # out the edge effects, then divide to correct the edge effects
-        #
-        edge_array = fgaussian(mask.astype(float))
-        masked_image = image.copy()
-        masked_image[~mask] = 0
-        smoothed_image = fgaussian(masked_image)
-        masked_image[mask] = smoothed_image[mask] / edge_array[mask]
-        return masked_image
 
     def limit_object_count(self, labeled_image, object_count):
         '''Limit the object count according to the rules
@@ -561,6 +466,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             # border_excluded_labeled_image = workspace.display_data.border_excluded_labels
 
             ax = figure.subplot_imshow_grayscale(0, 0, image, title)
+
             # figure.subplot_imshow_labels(1, 0, labeled_image,
             #                              self.object_name.value,
             #                              sharexy = ax)

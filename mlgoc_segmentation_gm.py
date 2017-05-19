@@ -127,7 +127,7 @@ def ml_evolve_step(old_phi,
             hat_old_phi = np.fft.fftshift(np.fft.fft2(old_phi[:, :, i]))
             op_old_phi = linear_operator[i] * hat_old_phi
             linear_part = np.real( np.fft.ifft2( np.fft.ifftshift( op_old_phi ) ))
-            nonlinear_part = compute_nonlinear_part(old_phi[:,:,i], parameters[i]['lambda'], parameters[i]['alpha_pf'])
+            nonlinear_part = compute_nonlinear_part(old_phi[:,:,i], parameters[i]['lambda'], parameters[i]['alpha'])
             functional_derivative[:,:,i] = linear_part + parameters[i]['alpha'] + nonlinear_part + image_part[:,:,i]
 
             overlap_derivative[:,:,i] = kappas[i]/2.0 * (sum_phi - old_phi[:,:,i] + layer_number - 1)
@@ -142,11 +142,13 @@ def ml_evolve_step(old_phi,
 
 def compute_linear_part(init_phi, parameters):
 
-    phase_size = np.shape(init_phi)
-    if init_phi.ndim > 2:
-        layer_number = phase_size[2]
-    else:
-        layer_number = 1
+    # phase_size = np.shape(init_phi)
+    print(init_phi.shape)
+    # if init_phi.ndim > 2:
+    #     layer_number = phase_size[2]
+    # else:
+    #     layer_number = 1
+    layer_number = len(parameters)
 
     linear_operator = [None] * layer_number
     for i in range(layer_number):
@@ -154,8 +156,8 @@ def compute_linear_part(init_phi, parameters):
         D_pf = temp_params['D']
         lambda_pf = temp_params['lambda']
         beta_pf = temp_params['beta']
-        ny = phase_size[0]
-        nx = phase_size[1]
+        ny = init_phi.shape[0]
+        nx = init_phi.shape[1]
         k2 = compute_neg_laplacian(ny, nx, temp_params['discrete'])
         interaction_operator = compute_interaction_operator(k2, temp_params)
         linear_operator[i] = k2 * (D_pf - beta_pf * interaction_operator) - lambda_pf
@@ -190,8 +192,8 @@ def compute_interaction_operator(k2, parameters):
         return 1.0 / (1.0 + k2)
     else:
         k2_size = np.shape(k2)
-        height = k2_size[1]
-        width = k2_size[0]
+        height = k2_size[0]
+        width = k2_size[1]
         d = parameters['d']
         epsilon = parameters['epsilon']
         x = np.arange(-width/2.0,width/2,1.0)
