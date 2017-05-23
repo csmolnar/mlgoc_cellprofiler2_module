@@ -73,8 +73,8 @@ import cellprofiler.settings as cps
 import cellprofiler.cpmath.outline
 import cellprofiler.objects
 from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
-import compute_mlgoc_parameters as cmp
-import mlgoc_segmentation_gm as mlgoc
+import mlgoc.compute_mlgoc_parameters as cmp
+import mlgoc.mlgoc_segmentation_gm as mlgoc
 import centrosome.outline
 
 LIMIT_NONE = "Continue"
