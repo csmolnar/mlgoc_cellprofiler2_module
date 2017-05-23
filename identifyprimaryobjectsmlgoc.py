@@ -70,7 +70,6 @@ import scipy.stats
 from cellprofiler.modules import identify as cpmi
 import cellprofiler.cpimage as cpi
 import cellprofiler.settings as cps
-from cellprofiler.cpmath.cpmorphology import relabel
 import cellprofiler.cpmath.outline
 import cellprofiler.objects
 from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
@@ -205,6 +204,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             object_set   - the objects (labeled masks) in this image set
             measurements - the measurements for this run
         """
+
         image_name = self.image_name.value
         cpimage = workspace.image_set.get_image(image_name,
                                                 must_be_grayscale = True)
@@ -214,25 +214,18 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         image_width = image.shape[0]
         image_height = image.shape[1]
 
-        objects = workspace.object_set.get_objects(self.seed_objects.value)
-        labels_in = objects.unedited_segmented.copy()
+        objects_in = workspace.object_set.get_objects(self.seed_objects.value)
+        labels_in = objects_in.unedited_segmented.copy()
         labels_in_mask = labels_in>0
-
-        self.number_of_layers = int(self.number_of_layers_string.value)
 
         alpha_tilde = 1.0
         lambda_tilde = 1.0
         rhatstar = 1.0
         kappa = 0.0
 
-        p = compute_mlgoc_parameters.compute_mlgoc_parameters(alpha_tilde,
-                                                              lambda_tilde,
-                                                              self.preferred_radius.value,
-                                                              rhatstar)
+        p = cmp.compute_mlgoc_parameters(alpha_tilde, lambda_tilde, self.preferred_radius.value, rhatstar)
 
-        prior_phase_field_parameters = [p[1] for i in range(self.number_of_layers)]
-
-        objects = workspace.object_set.get_objects(self.seed_objects.value)
+        prior_phase_field_parameters = [p[1] for i in range(self.number_of_layers.value)]
 
         gradient_weight = 0.0
 
@@ -246,119 +239,95 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         maxd = int(max(map(lambda x: x['d'], prior_phase_field_parameters)) )
 
         extended_image = np.pad(image, ((2*maxd,2*maxd),(2*maxd,2*maxd)), 'constant', constant_values=(self.mu_out.value,))
-        self.extended_image_height = extended_image.shape[0]
-        self.extended_image_width = extended_image.shape[1]
+        extended_image_height = extended_image.shape[0]
+        extended_image_width = extended_image.shape[1]
 
         extended_image[extended_image>data_parameters['muout']+4*data_parameters['muin']] = data_parameters['muout']+4*data_parameters['muin']
 
-        # distribution of objects into several layers
+        # TODO: distribution of objects into several layers
+        # 1: labels_in, n = split_objects(labels_in, max_label, radius)
+        # 2: initial_phi = sort_grayscale_objects_to_layers_coloring(labels_in*mask_in,4)
 
+        initial_phi = self.initialize_phi(workspace,extended_image_height, extended_image_width)
         optimization_parameters = {'tolerance': 1e-10,
                                    'max_iterations': self.maximum_iterations.value,
                                    'save_frequency': -1}
 
-        initial_phi = self.initialize_phi(workspace)
-
-        final_phi = mlgoc_segmentation_gm.mlgoc_segmentation_gm(
+        final_phi = mlgoc.mlgoc_segmentation_gm(
             prior_phase_field_parameters,
             extended_image,
             data_parameters,
             kappa,
             initial_phi,optimization_parameters)
 
-        if self.show_window:
-            workspace.display_data.image = extended_image
-            workspace.display_data.mask = mask
+        # label multi-layered segmentation
+        labeled_image, object_count = scipy.ndimage.label(final_phi > p[1]['alpha']/p[1]['lambda'],
+            structure=[[[0, 0, 0],[0, 0, 0],[0, 0, 0]],
+                       [[0, 1, 0],[1, 1, 1],[0, 1, 0]],
+                       [[0, 0, 0],[0, 0, 0],[0, 0, 0]]])
+        unedited_labels = labeled_image.copy()
+        outlines = np.array(
+            [centrosome.outline.outline(labeled_image[i, :, :]) for i in range(self.number_of_layers.value)])
+        outline_image = np.any(outlines > 0, axis=0)
+        out_img = cpi.Image(outline_image.astype(bool),
+                            parent_image=image)
+        workspace.image_set.add(self.save_outlines.value, out_img)
 
-
-        # workspace.display_data.statistics = []
-        # level = int(self.atrous_level.value)
-        #
-        # wavelet = self.a_trous(1.0*image, level+1)
-        # wlevprod = wavelet[:,:,level-1] * 3.0
-        #
-        # spotthresh = wlevprod.mean() + float(self.noise_removal_factor.value) * wlevprod.std()
-        # tidx = wlevprod < spotthresh
-        # wlevprod[tidx] = 0
-        #
-        # wlevprod = self.circular_average_filter(wlevprod, int(self.smoothing_filter_size.value))
-        # wlevprod = self.smooth_image(wlevprod, mask)
-        #
-        # max_wlevprod = scipy.ndimage.filters.maximum_filter(wlevprod,3)
-        # maxloc = (wlevprod == max_wlevprod)
-        # twlevprod = max_wlevprod > float(self.final_spot_threshold.value)
-        # maxloc[twlevprod == 0] = 0
-        #
-        # labeled_image,object_count = scipy.ndimage.label(maxloc,
-        #                                                  np.ones((3,3),bool))
-        #
-        # unedited_labels = labeled_image.copy()
-        # # Filter out objects touching the border or mask
-        # border_excluded_labeled_image = labeled_image.copy()
-        # labeled_image = self.filter_on_border(image, labeled_image)
-        # border_excluded_labeled_image[labeled_image > 0] = 0
-        #
-        # # Relabel the image
-        # labeled_image,object_count = relabel(labeled_image)
-        # new_labeled_image, new_object_count = self.limit_object_count(
-        #     labeled_image, object_count)
-        # if new_object_count < object_count:
-        #     # Add the labels that were filtered out into the border
-        #     # image.
-        #     border_excluded_mask = ((border_excluded_labeled_image > 0) |
-        #                             ((labeled_image > 0) &
-        #                              (new_labeled_image == 0)))
-        #     border_excluded_labeled_image = scipy.ndimage.label(border_excluded_mask,
-        #                                                         np.ones((3,3),bool))[0]
-        #     object_count = new_object_count
-        #     labeled_image = new_labeled_image
-        #
-        # # Make an outline image
-        # outline_image = cellprofiler.cpmath.outline.outline(labeled_image)
-        # outline_border_excluded_image = cellprofiler.cpmath.outline.outline(border_excluded_labeled_image)
-        #
-        # if self.show_window:
-        #     statistics = workspace.display_data.statistics
-        #     statistics.append(["# of accepted objects",
-        #                        "%d"%(object_count)])
-        #
-        #     workspace.display_data.image = image
-        #     workspace.display_data.labeled_image = labeled_image
-        #     workspace.display_data.border_excluded_labels = border_excluded_labeled_image
-        #
-        # # Add image measurements
-        # objname = self.object_name.value
-        # measurements = workspace.measurements
-        # cpmi.add_object_count_measurements(measurements,
-        #                                    objname, object_count)
-        # # Add label matrices to the object set
-        # objects = cellprofiler.objects.Objects()
+        objects = cellprofiler.objects.Objects()
         # objects.segmented = labeled_image
-        # objects.unedited_segmented = unedited_labels
-        # objects.parent_image = image
-        #
+        objects.ijv = objects_in.segmented.copy()
+        # objects.set_ijv(labeled_image, shape=(1,1,labeled_image.shape[2],labeled_image.shape[0],labeled_image.shape[1]))
+        # objects.unedited_segmented = labeled_image
+        # objects.small_removed_segmented = labeled_image
+        objects.parent_image = cpimage # must be
         # workspace.object_set.add_objects(objects,self.object_name.value)
-        # cpmi.add_object_location_measurements(workspace.measurements,
-        #                                       self.object_name.value,
-        #                                       labeled_image)
-        # if self.should_save_outlines.value:
-        #     out_img = cpi.Image(outline_image.astype(bool),
-        #                         parent_image = image)
-        #     workspace.image_set.add(self.save_outlines.value, out_img)
+        workspace.display_data.statistics = []
 
-    def initialize_phi(self):
+        # ijv_matrix = objects.ijv
+        # print('ijv shape: {}'.format(ijv_matrix.shape))
+        # ijv is like [[i1,j1,l1], [i2,j2,l2], ... , [in,jn,ln]]
+        # np.set_printoptions(threshold='nan')
+        # print(objects_in.segmented)
+        # print(ijv_matrix)
+
+        if self.show_window:
+            workspace.display_data.image = image
+            workspace.display_data.mask = mask
+            workspace.display_data.labels_in = labels_in
+            # workspace.display_data.labeled_image = labeled_image
+            # workspace.display_data.labeled_image = ijv_matrix
+
+            # workspace.display_data.labels = scipy.ndimage.label(final_phi>0.0,
+            #              structure=[[[0, 0, 0],
+            #                         [0, 0, 0],
+            #                         [0, 0, 0]],
+            #                         [[0, 1, 0],
+            #                         [1, 1, 1],
+            #                         [0, 1, 0]],
+            #                         [[0, 0, 0],
+            #                         [0, 0, 0],
+            #                         [0, 0, 0]]])
+
+    def initialize_phi(self, workspace, extended_image_height, extended_image_width):
         if self.initialization_type == 'Seeds (manual)':
+            labels_in = workspace.object_set.get_objects(self.seed_objects.value)
             pass
         elif self.initialization_type == 'Circular seeds (manual)':
+            labels_in = workspace.object_set.get_objects(self.seed_objects.value)
             pass
         elif self. initialization_type == 'Neutral':
             pass
         else:
             pass
-        init_phi = np.random.normal(0, 0.1,
-                                (self.extended_image_height, self.extended_image_width, self.number_of_layers))
+        init_phi = np.array(np.random.normal(0, 0.1,
+                                (self.number_of_layers.value, extended_image_height, extended_image_width)),ndmin=3)
         return init_phi
 
+    def split_objects(self, labels_in, radius):
+        pass
+
+    def sort_grayscale_objects_to_layers_coloring(self, labels_in, number_of_colors):
+        pass
 
     def create_contour_image(self, input_image, ml_phi, threshold):
         pass
@@ -457,19 +426,31 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             figure.set_subplots((2, 2))
             
             orig_axes     = figure.subplot(0,0)
-            # label_axes    = figure.subplot(1,0, sharexy = orig_axes)
-            # outlined_axes = figure.subplot(0,1, sharexy = orig_axes)
+            label_axes    = figure.subplot(1,0, sharexy = orig_axes)
+            outlined_axes = figure.subplot(0,1, sharexy = orig_axes)
+            final_axes = figure.subplot(1,1, sharexy = orig_axes)
 
             title = "Input image, cycle #%d"%(workspace.measurements.image_number,)
             image = workspace.display_data.image
-            # labeled_image = workspace.display_data.labeled_image
-            # border_excluded_labeled_image = workspace.display_data.border_excluded_labels
-
             ax = figure.subplot_imshow_grayscale(0, 0, image, title)
 
-            # figure.subplot_imshow_labels(1, 0, labeled_image,
-            #                              self.object_name.value,
-            #                              sharexy = ax)
+            labels_in = workspace.display_data.labels_in
+            title = "Input labels, cycle#%d" % (workspace.measurements.image_number,)
+            figure.subplot_imshow_labels(1, 0, labels_in,
+                                         title,
+                                         sharexy = ax)
+
+            # labeled_image = workspace.display_data.labeled_image
+            #
+            # cplabels = [
+            #     dict(name = self.object_name.value,
+            #          labels = [labeled_image])]
+            # title = "%s outlines" % (self.object_name.value)
+
+            # print('image.shape: {}, labels_in.shape: {}'.format(image.shape,labels_in.shape))
+
+            # figure.subplot_imshow_ijv(
+            #     0, 1, labeled_image, title)
     
             # cplabels = [
             #     dict(name = self.object_name.value,
@@ -499,7 +480,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         columns = cpmi.get_object_measurement_columns(self.object_name.value)
         return columns
 
-    def get_categories(self,pipeline, object_name):
+    def get_categories(self, pipeline, object_name):
         """Return the categories of measurements that this module produces
         object_name - return measurements made on this object (or 'Image' for image measurements)
         """

@@ -24,8 +24,8 @@ def mlgoc_segmentation_gm(parameters_pf,
     extended_image_width = extended_image_size[1]
 
     maxd = int(max(map(lambda x:x['d'], parameters_pf)))
-    image_height = extended_image_height - 2*maxd
-    image_width = extended_image_width - 2*maxd
+    image_height = extended_image_height - 4*maxd
+    image_width = extended_image_width - 4*maxd
 
     f_phi = ml_evolution(extended_initial_phi,
                          kappa,
@@ -36,9 +36,9 @@ def mlgoc_segmentation_gm(parameters_pf,
                          data_parameters,
                          extended_image)
     if f_phi.ndim > 2:
-        final_phi = f_phi[maxd:maxd+image_height-1,maxd:maxd+image_width-1,:]
+        final_phi = f_phi[:,2*maxd:-2*maxd,2*maxd:-2*maxd]
     else:
-        final_phi = f_phi[maxd:maxd+image_height-1, maxd:maxd+image_width-1]
+        final_phi = f_phi[2*maxd:-2*maxd,2*maxd:-2*maxd]
     return final_phi
 
 
@@ -109,9 +109,9 @@ def ml_evolve_step(old_phi,
     :param kappa: weight of overlap penalty (real number)
     :return: 
     """
-    phase_size = np.shape(old_phi)
+    phase_size = old_phi.shape
     if old_phi.ndim > 2:
-        layer_number = phase_size[-1]
+        layer_number = phase_size[0]
     else:
         layer_number = 1
     kappas = [kappa]*layer_number
@@ -122,15 +122,15 @@ def ml_evolve_step(old_phi,
     image_part = compute_imagepart_additivetanh(old_phi, image, data_parameters)
 
     if layer_number > 1:
-        sum_phi = np.sum(old_phi, axis=-1)
+        sum_phi = np.sum(old_phi, axis=0)
         for i in range(layer_number):
-            hat_old_phi = np.fft.fftshift(np.fft.fft2(old_phi[:, :, i]))
+            hat_old_phi = np.fft.fftshift(np.fft.fft2(old_phi[i, :, :]))
             op_old_phi = linear_operator[i] * hat_old_phi
             linear_part = np.real( np.fft.ifft2( np.fft.ifftshift( op_old_phi ) ))
-            nonlinear_part = compute_nonlinear_part(old_phi[:,:,i], parameters[i]['lambda'], parameters[i]['alpha'])
-            functional_derivative[:,:,i] = linear_part + parameters[i]['alpha'] + nonlinear_part + image_part[:,:,i]
+            nonlinear_part = compute_nonlinear_part(old_phi[i,:,:], parameters[i]['lambda'], parameters[i]['alpha'])
+            functional_derivative[i,:,:] = linear_part + parameters[i]['alpha'] + nonlinear_part + image_part[i, :, :]
 
-            overlap_derivative[:,:,i] = kappas[i]/2.0 * (sum_phi - old_phi[:,:,i] + layer_number - 1)
+            overlap_derivative[i,:,:] = kappas[i]/2.0 * (sum_phi - old_phi[i,:,:] + layer_number - 1)
     else:
         hat_old_phi = np.fft.fftshift(np.fft.fft2(old_phi))
         op_old_phi = linear_operator[0] * hat_old_phi
@@ -142,13 +142,7 @@ def ml_evolve_step(old_phi,
 
 def compute_linear_part(init_phi, parameters):
 
-    # phase_size = np.shape(init_phi)
-    print(init_phi.shape)
-    # if init_phi.ndim > 2:
-    #     layer_number = phase_size[2]
-    # else:
-    #     layer_number = 1
-    layer_number = len(parameters)
+    layer_number = init_phi.shape[0]
 
     linear_operator = [None] * layer_number
     for i in range(layer_number):
@@ -156,8 +150,8 @@ def compute_linear_part(init_phi, parameters):
         D_pf = temp_params['D']
         lambda_pf = temp_params['lambda']
         beta_pf = temp_params['beta']
-        ny = init_phi.shape[0]
-        nx = init_phi.shape[1]
+        ny = init_phi.shape[1]
+        nx = init_phi.shape[2]
         k2 = compute_neg_laplacian(ny, nx, temp_params['discrete'])
         interaction_operator = compute_interaction_operator(k2, temp_params)
         linear_operator[i] = k2 * (D_pf - beta_pf * interaction_operator) - lambda_pf
@@ -218,13 +212,13 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
     :return: 
     """
     tanh_phi = np.tanh(phi)
-    phase_size = np.shape(phi)
+    phase_size = phi.shape
     if phi.ndim > 2:
-        layer_number = phase_size[2]
-        tilde_phi_plus = np.sum(tanh_phi, axis=-1) + phase_size[-1] / 2
+        layer_number = phase_size[0]
+        tilde_phi_plus = np.sum(tanh_phi, axis=0) + layer_number / 2
     else:
         layer_number = 1
-        tilde_phi_plus = tanh_phi + 1.0/2
+        tilde_phi_plus = tanh_phi + layer_number/2
 
     tilde_phi_plus2 = tilde_phi_plus * tilde_phi_plus
     sech2_phi = np.power(1. / np.cosh(phi), 2)
@@ -251,7 +245,7 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
         image_linear_part = intensity_part_common * sech2_phi
     else:
         for i in range(layer_number):
-            image_linear_part[:, :, i] = intensity_part_common * sech2_phi[:, :, i]
+            image_linear_part[i, :, :,] = intensity_part_common * sech2_phi[i, :, :]
     image_linear_part = data_parameters['gamma2'] / 4 * image_linear_part
 
     return image_linear_part
