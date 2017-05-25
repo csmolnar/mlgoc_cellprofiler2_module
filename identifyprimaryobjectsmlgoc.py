@@ -326,7 +326,89 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     def split_objects(self, labels_in, radius):
         pass
 
+    def centers_of_ml_labels(self, labels):
+        unique_labels = np.unique(labels)
+        if not len(unique_labels):
+            return []
+        elif len(unique_labels) == 1 and not unique_labels[0]:
+            return []
+        else:
+            if labels.ndim > 2:
+                centers = np.zeros((len(unique_labels) - 1, 2))
+                maxind = 0
+                for i in range(labels.shape[0]):
+                    layer = labels[i, :, :]
+                    layer_unique_values = np.unique(layer)
+                    if not len(layer_unique_values) or len(layer_unique_values) == 1 and not layer_unique_values[0]:
+                        pass
+                    else:
+                        cs = np.array(scipy.ndimage.center_of_mass(layer > 0, layer, layer_unique_values[1:]))
+                        centers[maxind:maxind + len(layer_unique_values) - 1, :] = cs
+                        maxind += len(layer_unique_values) - 1
+
+                return centers
+            else:
+                return np.array(scipy.ndimage.center_of_mass(labels > 0, labels, unique_labels[1:]))
+
     def sort_grayscale_objects_to_layers_coloring(self, labels_in, number_of_colors):
+        init_phi = np.zeros((number_of_colors,labels_in.shape[0],labels_in.shape[1]))
+        colors = self.patch_color_select(labels_in, number_of_colors)
+        for ll in range(number_of_colors):
+            object_indices_of_layer = np.where(labels_in==ll)
+            temp_layer = np.zeros(labels_in.shape)
+            temp_layer[object_indices_of_layer[0]] = 1
+            init_phi[ll,:,:,] = temp_layer
+
+
+    def patch_color_select(labels_in, number_of_colors):
+        # centers = centers_of_ml_labels(labels_in)
+        centers = np.array(scipy.ndimage.center_of_mass(labels_in, labels_in, np.unique(labels_in)[1:]))
+        ic = np.argsort(map(lambda x: x[0] * x[0] + x[1] * x[1], centers))
+        n = len(centers)
+        ls = [i % number_of_colors for i in range(n)]
+        colors = [ls[ic[i]] for i in range(n)]
+        for k1 in range(number_of_colors, n):
+            k0 = ic[:k1]
+            k = ic[k1]
+            # cd = sum(abs(centers[k0, :] - centers[k + 0, , :]))
+            cd = map(lambda x: (x[0] - centers[k][0]) * (x[0] - centers[k][0]) +
+                               (x[1] - centers[k][1]) * (x[1] - centers[k][1]),
+                     centers[k0])
+            s = 0
+            # cc = colors[k0]
+            cc = [colors[i] for i in k0]
+            # missing
+            for c in range(number_of_colors):
+                ccind = [i for i, x in enumerate(cc) if x == c]
+                ind = min([cd[i] for i in ccind])
+                if ind > s:
+                    s = ind
+                    iss = c
+
+            colors[k] = iss
+            kc = np.where(np.logical_and(np.array(cd) == s, np.array(cc) == iss))[0][0]
+            kk = k0[kc]
+            k0[kc] = k
+            k = kk
+            kd = map(lambda x: (x[0] - centers[k][0]) * (x[0] - centers[k][0]) +
+                               (x[1] - centers[k][1]) * (x[1] - centers[k][1]),
+                     centers[k0])
+            ks = 0
+            # cc = colors[k0]
+            cc = [colors[i] for i in k0]
+            for c in range(number_of_colors):
+                ccind = [i for i, x in enumerate(cc) if x == c]
+                ind = min([kd[i] for i in ccind])
+                if ind > ks:
+                    ks = ind
+                    ik = c
+            if ks > s:
+                colors[k] = ik
+
+        return colors
+
+
+    def remove_embedded_objects(self, labels):
         pass
 
     def create_contour_image(self, input_image, ml_phi, threshold):
