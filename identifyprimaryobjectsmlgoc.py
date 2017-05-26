@@ -215,7 +215,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         image_height = image.shape[1]
 
         objects_in = workspace.object_set.get_objects(self.seed_objects.value)
-        labels_in = objects_in.unedited_segmented.copy()
+        labels_in = objects_in.segmented.copy()
         labels_in_mask = labels_in>0
 
         alpha_tilde = 1.0
@@ -244,11 +244,27 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         extended_image[extended_image>data_parameters['muout']+4*data_parameters['muin']] = data_parameters['muout']+4*data_parameters['muin']
 
-        # TODO: distribution of objects into several layers
-        # 1: labels_in, n = split_objects(labels_in, max_label, radius)
-        # 2: initial_phi = sort_grayscale_objects_to_layers_coloring(labels_in*mask_in,4)
+        # initialize phase field
+        if 'manual'.lower() in self.initialization_type.value.lower():
+            # TODO: labels_in, n = split_objects(labels_in,max_label,radius)
+            initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, 4);
+            if self.initialization_type == "Seeds (manual)":
+                # TODO: ?nothing
+                pass
+            elif self.initialization_type == "Circular seeds (manual)":
+                # TODO: put circles to centroids of seeds
+                pass
+            initial_phi = np.pad(initial_phi,
+                                 ((0,0),(2*maxd,2*maxd),(2*maxd,2*maxd)),
+                                 'constant', constant_values=(-1.0,))
+        else:
+            pass
+            initial_phi = np.array(np.random.normal(0, 0.1,
+                                (self.number_of_layers.value, extended_image_height, extended_image_width)),ndmin=3)
 
-        initial_phi = self.initialize_phi(workspace,extended_image_height, extended_image_width)
+        print('initial_phi')
+        print(initial_phi.shape)
+
         optimization_parameters = {'tolerance': 1e-10,
                                    'max_iterations': self.maximum_iterations.value,
                                    'save_frequency': -1}
@@ -308,20 +324,23 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             #                         [0, 0, 0],
             #                         [0, 0, 0]]])
 
-    def initialize_phi(self, workspace, extended_image_height, extended_image_width):
-        if self.initialization_type == 'Seeds (manual)':
-            labels_in = workspace.object_set.get_objects(self.seed_objects.value)
-            pass
-        elif self.initialization_type == 'Circular seeds (manual)':
-            labels_in = workspace.object_set.get_objects(self.seed_objects.value)
-            pass
-        elif self. initialization_type == 'Neutral':
-            pass
-        else:
-            pass
-        init_phi = np.array(np.random.normal(0, 0.1,
-                                (self.number_of_layers.value, extended_image_height, extended_image_width)),ndmin=3)
-        return init_phi
+    # def initialize_phi(self, workspace, extended_image_height, extended_image_width):
+    #     if 'manual'.lower() in self.initialization_type.lower():
+    #         labels_in = workspace.object_set.get_objects(self.seed_objects.value)
+    #         if self.initialization_type == 'Seeds (manual)':
+    #
+    #             # TODO: insert distribution code here
+    #             pass
+    #         elif self.initialization_type == 'Circular seeds (manual)':
+    #
+    #             # TODO: insert distribution code here
+    #             pass
+    #         initial_phi = np.pad(initial_phi,((0,0),(),()),'constant',constant_values=-1.0)
+    #     else:
+    #         pass
+    #         init_phi = np.array(np.random.normal(0, 0.1,
+    #                             (self.number_of_layers.value, extended_image_height, extended_image_width)),ndmin=3)
+    #     return init_phi
 
     def split_objects(self, labels_in, radius):
         pass
@@ -354,14 +373,15 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         init_phi = np.zeros((number_of_colors,labels_in.shape[0],labels_in.shape[1]))
         colors = self.patch_color_select(labels_in, number_of_colors)
         for ll in range(number_of_colors):
-            object_indices_of_layer = np.where(labels_in==ll)
-            temp_layer = np.zeros(labels_in.shape)
-            temp_layer[object_indices_of_layer[0]] = 1
-            init_phi[ll,:,:,] = temp_layer
+            # object_indices_of_layer = np.where(labels_in==ll)
+            object_indices_of_layer = labels_in==ll+1
+            temp_layer = np.zeros(labels_in.shape)-1
+            temp_layer[object_indices_of_layer] = 1
+            init_phi[ll, :, :] = temp_layer
+        return init_phi
 
 
-    def patch_color_select(labels_in, number_of_colors):
-        # centers = centers_of_ml_labels(labels_in)
+    def patch_color_select(self, labels_in, number_of_colors):
         centers = np.array(scipy.ndimage.center_of_mass(labels_in, labels_in, np.unique(labels_in)[1:]))
         ic = np.argsort(map(lambda x: x[0] * x[0] + x[1] * x[1], centers))
         n = len(centers)
@@ -370,38 +390,33 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         for k1 in range(number_of_colors, n):
             k0 = ic[:k1]
             k = ic[k1]
-            # cd = sum(abs(centers[k0, :] - centers[k + 0, , :]))
-            cd = map(lambda x: (x[0] - centers[k][0]) * (x[0] - centers[k][0]) +
-                               (x[1] - centers[k][1]) * (x[1] - centers[k][1]),
+            cd = map(lambda xx: (xx[0] - centers[k][0]) * (xx[0] - centers[k][0]) + (xx[1] - centers[k][1]) * (xx[1] - centers[k][1]),
                      centers[k0])
             s = 0
-            # cc = colors[k0]
             cc = [colors[i] for i in k0]
-            # missing
             for c in range(number_of_colors):
                 ccind = [i for i, x in enumerate(cc) if x == c]
-                ind = min([cd[i] for i in ccind])
-                if ind > s:
-                    s = ind
-                    iss = c
-
+                if ccind:
+                    ind = min([cd[i] for i in ccind])
+                    if ind > s:
+                        s = ind
+                        iss = c
             colors[k] = iss
             kc = np.where(np.logical_and(np.array(cd) == s, np.array(cc) == iss))[0][0]
             kk = k0[kc]
             k0[kc] = k
             k = kk
-            kd = map(lambda x: (x[0] - centers[k][0]) * (x[0] - centers[k][0]) +
-                               (x[1] - centers[k][1]) * (x[1] - centers[k][1]),
+            kd = map(lambda xx: (xx[0] - centers[k][0]) * (xx[0] - centers[k][0]) + (xx[1] - centers[k][1]) * (xx[1] - centers[k][1]),
                      centers[k0])
             ks = 0
-            # cc = colors[k0]
             cc = [colors[i] for i in k0]
             for c in range(number_of_colors):
                 ccind = [i for i, x in enumerate(cc) if x == c]
-                ind = min([kd[i] for i in ccind])
-                if ind > ks:
-                    ks = ind
-                    ik = c
+                if ccind:
+                    ind = min([kd[i] for i in ccind])
+                    if ind > ks:
+                        ks = ind
+                        ik = c
             if ks > s:
                 colors[k] = ik
 
@@ -411,96 +426,74 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     def remove_embedded_objects(self, labels):
         pass
 
-    def create_contour_image(self, input_image, ml_phi, threshold):
+    def filter_on_size(self, labels):
         pass
 
-    def limit_object_count(self, labeled_image, object_count):
-        '''Limit the object count according to the rules
-        
-        labeled_image - image to be limited
-        object_count - check to see if this exceeds the maximum
-        
-        returns a new labeled_image and object count
-        '''
-        if object_count > self.maximum_object_count.value:
-            if self.limit_choice == LIMIT_ERASE:
-                labeled_image = np.zeros(labeled_image.shape, int)
-                object_count = 0
-            elif self.limit_choice == LIMIT_TRUNCATE:
-                #
-                # Pick arbitrary objects, doing so in a repeatable,
-                # but pseudorandom manner.
-                #
-                r = np.random.RandomState()
-                r.seed(abs(np.sum(labeled_image)))
-                #
-                # Pick an arbitrary ordering of the label numbers
-                #
-                index = r.permutation(object_count) + 1
-                #
-                # Pick only maximum_object_count of them
-                #
-                index = index[:self.maximum_object_count.value]
-                #
-                # Make a vector that maps old object numbers to new
-                #
-                mapping = np.zeros(object_count+1, int)
-                mapping[index] = np.arange(1,len(index)+1)
-                #
-                # Relabel
-                #
-                labeled_image = mapping[labeled_image]
-                object_count = len(index)
-        return labeled_image, object_count
-        
-    def filter_on_border(self, image, labeled_image):
+    def merge_overlapping_objects(self, labels, JI_threshold, radius):
+        pass
+
+    def filter_on_overlap_level(self, labels, JI_threshold, radius):
+        pass
+
+    def filter_on_border(self, labels):
         """Filter out objects touching the border
-        
+
         In addition, if the image has a mask, filter out objects
         touching the border of the mask.
         """
-        return labeled_image
-        """
-        if self.exclude_border_objects.value:
-            border_labels = list(labeled_image[0,:])
-            border_labels.extend(labeled_image[:,0])
-            border_labels.extend(labeled_image[labeled_image.shape[0]-1,:])
-            border_labels.extend(labeled_image[:,labeled_image.shape[1]-1])
-            border_labels = np.array(border_labels)
-            #
-            # the following histogram has a value > 0 for any object
-            # with a border pixel
-            #
-            histogram = scipy.sparse.coo_matrix((np.ones(border_labels.shape),
-                                                 (border_labels,
-                                                  np.zeros(border_labels.shape))),
-                                                 shape=(np.max(labeled_image)+1,1)).todense()
-            histogram = np.array(histogram).flatten()
-            if any(histogram[1:] > 0):
-                histogram_image = histogram[labeled_image]
-                labeled_image[histogram_image > 0] = 0
-            elif image.has_mask:
-                # The assumption here is that, if nothing touches the border,
-                # the mask is a large, elliptical mask that tells you where the
-                # well is. That's the way the old Matlab code works and it's duplicated here
-                #
-                # The operation below gets the mask pixels that are on the border of the mask
-                # The erosion turns all pixels touching an edge to zero. The not of this
-                # is the border + formerly masked-out pixels.
-                mask_border = np.logical_not(scipy.ndimage.binary_erosion(image.mask))
-                mask_border = np.logical_and(mask_border,image.mask)
-                border_labels = labeled_image[mask_border]
-                border_labels = border_labels.flatten()
-                histogram = scipy.sparse.coo_matrix((np.ones(border_labels.shape),
-                                                     (border_labels,
-                                                      np.zeros(border_labels.shape))),
-                                                      shape=(np.max(labeled_image)+1,1)).todense()
-                histogram = np.array(histogram).flatten()
-                if any(histogram[1:] > 0):
-                    histogram_image = histogram[labeled_image]
-                    labeled_image[histogram_image > 0] = 0
-        return labeled_image
-        """
+        pass
+
+    def create_contour_image(self, input_image, ml_phi, threshold):
+        pass
+
+    # def filter_on_border(self, image, labeled_image):
+    #     """Filter out objects touching the border
+    #
+    #     In addition, if the image has a mask, filter out objects
+    #     touching the border of the mask.
+    #     """
+    #     return labeled_image
+    #     """
+    #     if self.exclude_border_objects.value:
+    #         border_labels = list(labeled_image[0,:])
+    #         border_labels.extend(labeled_image[:,0])
+    #         border_labels.extend(labeled_image[labeled_image.shape[0]-1,:])
+    #         border_labels.extend(labeled_image[:,labeled_image.shape[1]-1])
+    #         border_labels = np.array(border_labels)
+    #         #
+    #         # the following histogram has a value > 0 for any object
+    #         # with a border pixel
+    #         #
+    #         histogram = scipy.sparse.coo_matrix((np.ones(border_labels.shape),
+    #                                              (border_labels,
+    #                                               np.zeros(border_labels.shape))),
+    #                                              shape=(np.max(labeled_image)+1,1)).todense()
+    #         histogram = np.array(histogram).flatten()
+    #         if any(histogram[1:] > 0):
+    #             histogram_image = histogram[labeled_image]
+    #             labeled_image[histogram_image > 0] = 0
+    #         elif image.has_mask:
+    #             # The assumption here is that, if nothing touches the border,
+    #             # the mask is a large, elliptical mask that tells you where the
+    #             # well is. That's the way the old Matlab code works and it's duplicated here
+    #             #
+    #             # The operation below gets the mask pixels that are on the border of the mask
+    #             # The erosion turns all pixels touching an edge to zero. The not of this
+    #             # is the border + formerly masked-out pixels.
+    #             mask_border = np.logical_not(scipy.ndimage.binary_erosion(image.mask))
+    #             mask_border = np.logical_and(mask_border,image.mask)
+    #             border_labels = labeled_image[mask_border]
+    #             border_labels = border_labels.flatten()
+    #             histogram = scipy.sparse.coo_matrix((np.ones(border_labels.shape),
+    #                                                  (border_labels,
+    #                                                   np.zeros(border_labels.shape))),
+    #                                                   shape=(np.max(labeled_image)+1,1)).todense()
+    #             histogram = np.array(histogram).flatten()
+    #             if any(histogram[1:] > 0):
+    #                 histogram_image = histogram[labeled_image]
+    #                 labeled_image[histogram_image > 0] = 0
+    #     return labeled_image
+    #     """
     
     def display(self, workspace, figure):
         """Display the image and labeling"""
