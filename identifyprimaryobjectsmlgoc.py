@@ -296,6 +296,8 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                             parent_image=image)
         workspace.image_set.add(self.save_outlines.value, out_img)
 
+        filtered_image = labeled_image
+
         objects = cellprofiler.objects.Objects()
         # objects.segmented = labeled_image
         objects.ijv = objects_in.segmented.copy()
@@ -306,30 +308,12 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         # workspace.object_set.add_objects(objects,self.object_name.value)
         workspace.display_data.statistics = []
 
-        # ijv_matrix = objects.ijv
-        # print('ijv shape: {}'.format(ijv_matrix.shape))
-        # ijv is like [[i1,j1,l1], [i2,j2,l2], ... , [in,jn,ln]]
-        # np.set_printoptions(threshold='nan')
-        # print(objects_in.segmented)
-        # print(ijv_matrix)
-
         if self.show_window:
             workspace.display_data.image = image
             workspace.display_data.mask = mask
             workspace.display_data.labels_in = labels_in
-            # workspace.display_data.labeled_image = ijv_matrix
             workspace.display_data.labeled_image = labeled_image
-
-            # workspace.display_data.labels = scipy.ndimage.label(final_phi>0.0,
-            #              structure=[[[0, 0, 0],
-            #                         [0, 0, 0],
-            #                         [0, 0, 0]],
-            #                         [[0, 1, 0],
-            #                         [1, 1, 1],
-            #                         [0, 1, 0]],
-            #                         [[0, 0, 0],
-            #                         [0, 0, 0],
-            #                         [0, 0, 0]]])
+            workspace.display_data.filtered_image = filtered_image
 
     # def initialize_phi(self, workspace, extended_image_height, extended_image_width):
     #     if 'manual'.lower() in self.initialization_type.lower():
@@ -521,50 +505,23 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                          sharexy = ax)
 
             labeled_image = workspace.display_data.labeled_image
-            #
-            # cplabels = [
-            #     dict(name = self.object_name.value,
-            #          labels = [labeled_image[0,:,:]])
-            # ]
             layer_colors = [(0,255,0),(0,127,255),(0,0,255),(0,255,255),(0,255,127)]
-            cplabels = [dict(name=self.object_name.value+" ({}. layer)".format(ll),
+            cplabels = [dict(name=self.object_name.value+" ({}. layer)".format(ll+1),
                         labels=[labeled_image[ll,:,:]],outline_color=cpp.tuple_to_color(layer_colors[ll%self.number_of_layers.value])) for ll in range(self.number_of_layers.value)]
-            # cplabels = [
-            #     dict(name=self.object_name.value,
-            #          labels=[labeled_image]),
-            #     dict(name="Objects filtered out by size",
-            #          labels=[size_excluded_labeled_image]),
-            #     dict(name="Objects touching border",
-            #          labels=[border_excluded_labeled_image])]
-
             title = "{} outlines".format(self.object_name.value)
             figure.subplot_imshow_grayscale(
                 0, 1, image, title, cplabels=cplabels, sharexy=ax)
 
-            # cplabels = [
-            #     dict(name = self.object_name.value,
-            #          labels = [labeled_image])]
-            # title = "%s outlines" % (self.object_name.value)
+            filtered_image = workspace.display_data.filtered_image
+            cplabels = [dict(name=self.object_name.value + " ({}. layer)".format(ll+1),
+                             labels=[filtered_image[ll, :, :]],
+                             outline_color=cpp.tuple_to_color(layer_colors[ll % self.number_of_layers.value])) for ll in
+                        range(self.number_of_layers.value)]
+            title = "Filtered {} outlines".format(self.object_name.value)
+            figure.subplot_imshow_grayscale(
+                1, 1, image, title, cplabels=cplabels, sharexy=ax)
 
-            # print('image.shape: {}, labels_in.shape: {}'.format(image.shape,labels_in.shape))
-
-            # figure.subplot_imshow_ijv(
-            #     0, 1, labeled_image, title)
-    
-            # cplabels = [
-            #     dict(name = self.object_name.value,
-            #          labels = [labeled_image]),
-            #     dict(name = "Objects touching border",
-            #          labels = [border_excluded_labeled_image])]
-            # title = "%s outlines"%(self.object_name.value)
-            # figure.subplot_imshow_grayscale(
-            #     0, 1, image, title, cplabels = cplabels, sharexy = ax)
             
-            # figure.subplot_table(
-            #     1, 1,
-            #     [[x[1]] for x in workspace.display_data.statistics],
-            #     row_labels = [x[0] for x in workspace.display_data.statistics])
-    
     def is_object_identification_module(self):
         """DetectSpots makes primary objects so it's a identification module"""
         return True
