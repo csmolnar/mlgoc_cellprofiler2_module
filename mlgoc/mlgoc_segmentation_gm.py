@@ -215,7 +215,7 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
     phase_size = phi.shape
     if phi.ndim > 2:
         layer_number = phase_size[0]
-        tilde_phi_plus = np.sum(tanh_phi, axis=0) + layer_number / 2
+        tilde_phi_plus = np.sum(tanh_phi, axis=0) + layer_number/2
     else:
         layer_number = 1
         tilde_phi_plus = tanh_phi + layer_number/2
@@ -232,7 +232,7 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
     deltasigma2 = sigmain * sigmain - sigmaout2
     image_minus_muout = image - muout
 
-    intensity_part_nominator = deltamu * deltasigma2 * tilde_phi_plus2 \
+    intensity_part_nominator = deltamu2 * deltasigma2 * tilde_phi_plus2 \
                                + 2 * sigmaout2 * deltamu2 * tilde_phi_plus \
                                - 2 * sigmaout2 * deltamu * image_minus_muout \
                                - deltasigma2 * image_minus_muout * image_minus_muout
@@ -246,6 +246,6 @@ def compute_imagepart_additivetanh(phi, image, data_parameters):
     else:
         for i in range(layer_number):
             image_linear_part[i, :, :,] = intensity_part_common * sech2_phi[i, :, :]
-    image_linear_part = data_parameters['gamma2'] / 4 * image_linear_part
+    image_linear_part *= data_parameters['gamma2'] / 4
 
     return image_linear_part
