@@ -76,6 +76,13 @@ from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
 import mlgoc.compute_mlgoc_parameters as cmp
 import mlgoc.mlgoc_segmentation_gm as mlgoc
 import centrosome.outline
+import cellprofiler.preferences as cpp
+
+INIT_MODE_SEEDS_MANUAL = "Seeds (manual)"
+INIT_MODE_SEEDS_CIRCULAR_MANUAL = "Circular seeds (manual)"
+INIT_MODE_NEUTRAL = "Neutral"
+INIT_MODE_SQUARES = "Squares"
+
 
 LIMIT_NONE = "Continue"
 LIMIT_TRUNCATE = "Truncate"
@@ -135,7 +142,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             Give the weight of data term compared to the shape energy.""")
 
         self.initialization_type = cps.Choice(
-            "Type of initialization", ["Seeds (manual)", "Circular seeds (manual)", "Neutral", "Squares"], doc="""
+            "Type of initialization", [INIT_MODE_SEEDS_MANUAL, INIT_MODE_SEEDS_CIRCULAR_MANUAL, INIT_MODE_NEUTRAL], doc="""
             Select how to initialize the phase field.""")
 
         self.maximum_iterations = cps.Integer(
@@ -310,8 +317,8 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             workspace.display_data.image = image
             workspace.display_data.mask = mask
             workspace.display_data.labels_in = labels_in
-            # workspace.display_data.labeled_image = labeled_image
             # workspace.display_data.labeled_image = ijv_matrix
+            workspace.display_data.labeled_image = labeled_image
 
             # workspace.display_data.labels = scipy.ndimage.label(final_phi>0.0,
             #              structure=[[[0, 0, 0],
@@ -380,7 +387,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             init_phi[ll, :, :] = temp_layer
         return init_phi
 
-
     def patch_color_select(self, labels_in, number_of_colors):
         centers = np.array(scipy.ndimage.center_of_mass(labels_in, labels_in, np.unique(labels_in)[1:]))
         ic = np.argsort(map(lambda x: x[0] * x[0] + x[1] * x[1], centers))
@@ -421,7 +427,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                 colors[k] = ik
 
         return colors
-
 
     def remove_embedded_objects(self, labels):
         pass
@@ -515,8 +520,27 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                          title,
                                          sharexy = ax)
 
-            # labeled_image = workspace.display_data.labeled_image
+            labeled_image = workspace.display_data.labeled_image
             #
+            # cplabels = [
+            #     dict(name = self.object_name.value,
+            #          labels = [labeled_image[0,:,:]])
+            # ]
+            layer_colors = [(0,255,0),(0,127,255),(0,0,255),(0,255,255),(0,255,127)]
+            cplabels = [dict(name=self.object_name.value+" ({}. layer)".format(ll),
+                        labels=[labeled_image[ll,:,:]],outline_color=cpp.tuple_to_color(layer_colors[ll%self.number_of_layers.value])) for ll in range(self.number_of_layers.value)]
+            # cplabels = [
+            #     dict(name=self.object_name.value,
+            #          labels=[labeled_image]),
+            #     dict(name="Objects filtered out by size",
+            #          labels=[size_excluded_labeled_image]),
+            #     dict(name="Objects touching border",
+            #          labels=[border_excluded_labeled_image])]
+
+            title = "{} outlines".format(self.object_name.value)
+            figure.subplot_imshow_grayscale(
+                0, 1, image, title, cplabels=cplabels, sharexy=ax)
+
             # cplabels = [
             #     dict(name = self.object_name.value,
             #          labels = [labeled_image])]
