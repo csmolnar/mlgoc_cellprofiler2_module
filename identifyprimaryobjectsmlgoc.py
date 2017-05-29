@@ -130,7 +130,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             Give the variance of the intensities over single (not overlapping) objects.""")
 
         self.mu_out = cps.Float(
-            "Mean intensity the background", 0.25, doc="""
+            "Mean intensity of the background", 0.25, doc="""
             Give a mean intensity the image background.""")
 
         self.sigma_out = cps.Float(
@@ -232,7 +232,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         p = cmp.compute_mlgoc_parameters(alpha_tilde, lambda_tilde, self.preferred_radius.value, rhatstar)
 
-        prior_phase_field_parameters = [p[1] for i in range(self.number_of_layers.value)]
+        prior_phase_field_parameters = [p[1]] * self.number_of_layers.value
 
         gradient_weight = 0.0
 
@@ -243,7 +243,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                            'gamma1': gradient_weight,
                            'gamma2': self.data_weight.value}
 
-        maxd = int(max(map(lambda x: x['d'], prior_phase_field_parameters)) )
+        maxd = int(max(map(lambda x: x['d'], prior_phase_field_parameters)))
 
         extended_image = np.pad(image, ((2*maxd,2*maxd),(2*maxd,2*maxd)), 'constant', constant_values=(self.mu_out.value,))
         extended_image_height = extended_image.shape[0]
@@ -254,7 +254,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         # initialize phase field
         if 'manual'.lower() in self.initialization_type.value.lower():
             # TODO: labels_in, n = split_objects(labels_in,max_label,radius)
-            initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, 4);
+            initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, 4)
             if self.initialization_type == "Seeds (manual)":
                 # TODO: ?nothing
                 pass
@@ -289,14 +289,21 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                        [[0, 1, 0],[1, 1, 1],[0, 1, 0]],
                        [[0, 0, 0],[0, 0, 0],[0, 0, 0]]])
         unedited_labels = labeled_image.copy()
-        outlines = np.array(
-            [centrosome.outline.outline(labeled_image[i, :, :]) for i in range(self.number_of_layers.value)])
-        outline_image = np.any(outlines > 0, axis=0)
-        out_img = cpi.Image(outline_image.astype(bool),
-                            parent_image=image)
-        workspace.image_set.add(self.save_outlines.value, out_img)
 
-        filtered_image = labeled_image
+
+        if self.should_save_outlines.value:
+            for i in range(self.number_of_layers.value):
+                np.savetxt('D:/temp/finalphi_k{}.csv'.format(i),final_phi[i,:,:],delimiter=",")
+            outlines = np.array(
+                [centrosome.outline.outline(labeled_image[i, :, :]) for i in range(self.number_of_layers.value)])
+            outline_image = np.any(outlines > 0, axis=0)
+            out_img = cpi.Image(outline_image.astype(bool), parent_image=image)
+            print(outlines.shape)
+            print(outline_image.shape)
+            print(out_img.image.shape)
+            workspace.image_set.add(self.save_outlines.value, out_img)
+
+        filtered_image = labeled_image.copy()
 
         objects = cellprofiler.objects.Objects()
         # objects.segmented = labeled_image
@@ -371,7 +378,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             init_phi[ll, :, :] = temp_layer
         return init_phi
 
-    def patch_color_select(self, labels_in, number_of_colors):
+    def patch_color_select(labels_in, number_of_colors):
         centers = np.array(scipy.ndimage.center_of_mass(labels_in, labels_in, np.unique(labels_in)[1:]))
         ic = np.argsort(map(lambda x: x[0] * x[0] + x[1] * x[1], centers))
         n = len(centers)
@@ -419,6 +426,10 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         pass
 
     def merge_overlapping_objects(self, labels, JI_threshold, radius):
+        """Merge objects having overlap degree over a certain threshold
+
+        In addition, if the image has a mask, merge the corresponding mask objecst.
+        """
         pass
 
     def filter_on_overlap_level(self, labels, JI_threshold, radius):
@@ -430,9 +441,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         In addition, if the image has a mask, filter out objects
         touching the border of the mask.
         """
-        pass
-
-    def create_contour_image(self, input_image, ml_phi, threshold):
         pass
 
     # def filter_on_border(self, image, labeled_image):
@@ -521,7 +529,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             figure.subplot_imshow_grayscale(
                 1, 1, image, title, cplabels=cplabels, sharexy=ax)
 
-            
     def is_object_identification_module(self):
         """DetectSpots makes primary objects so it's a identification module"""
         return True
