@@ -369,7 +369,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
     def sort_grayscale_objects_to_layers_coloring(self, labels_in, number_of_colors):
         init_phi = np.zeros((number_of_colors,labels_in.shape[0],labels_in.shape[1]))
-        colors = self.patch_color_select(labels_in, number_of_colors)
+        colors = IdentifyPrimaryObjectsMLGOC.patch_color_select(labels_in, number_of_colors)
         for ll in range(number_of_colors):
             # object_indices_of_layer = np.where(labels_in==ll)
             object_indices_of_layer = labels_in==ll+1
@@ -378,6 +378,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             init_phi[ll, :, :] = temp_layer
         return init_phi
 
+    @staticmethod
     def patch_color_select(labels_in, number_of_colors):
         centers = np.array(scipy.ndimage.center_of_mass(labels_in, labels_in, np.unique(labels_in)[1:]))
         ic = np.argsort(map(lambda x: x[0] * x[0] + x[1] * x[1], centers))
