@@ -70,9 +70,6 @@ def ml_evolution(init_phi,
 
     while not converged:
 
-        if save_frequency > 0 and num_of_iterations % save_frequency == 0:
-            np.savetxt('iter_{0:04d}.csv'.format(num_of_iterations),old_phi)
-
         functional_derivative, overlap_derivative = ml_evolve_step(old_phi,
                                                                    linear_operator,
                                                                    parameters,
@@ -88,7 +85,8 @@ def ml_evolution(init_phi,
         if mean_functional_derivative < tolerance or num_of_iterations >= max_iterations:
             converged = True
         num_of_iterations = num_of_iterations+1
-        print('Iteration {0:4d}'.format(num_of_iterations))
+        if num_of_iterations % int(max_iterations/10) == 0:
+            print('Iteration {0:4d} ({1:2d}%)'.format(num_of_iterations, int((100.0*num_of_iterations)/max_iterations)))
         old_phi = new_phi
     return new_phi
 

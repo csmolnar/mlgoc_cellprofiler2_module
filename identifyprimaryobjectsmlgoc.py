@@ -254,7 +254,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         # initialize phase field
         if 'manual'.lower() in self.initialization_type.value.lower():
             # TODO: labels_in, n = split_objects(labels_in,max_label,radius)
-            initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, 4)
+            initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, self.number_of_layers.value)
             if self.initialization_type == "Seeds (manual)":
                 # TODO: ?nothing
                 pass
@@ -370,11 +370,12 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     def sort_grayscale_objects_to_layers_coloring(self, labels_in, number_of_colors):
         init_phi = np.zeros((number_of_colors,labels_in.shape[0],labels_in.shape[1]))
         colors = IdentifyPrimaryObjectsMLGOC.patch_color_select(labels_in, number_of_colors)
-        for ll in range(number_of_colors):
-            # object_indices_of_layer = np.where(labels_in==ll)
-            object_indices_of_layer = labels_in==ll+1
+        colors = np.array(colors)
+        for ll in range(self.number_of_layers.value):
+            object_indices_of_layer = np.where(colors==ll)[0]
             temp_layer = np.zeros(labels_in.shape)-1
-            temp_layer[object_indices_of_layer] = 1
+            for oi in object_indices_of_layer:
+                temp_layer[labels_in == oi+1] = 1
             init_phi[ll, :, :] = temp_layer
         return init_phi
 
