@@ -78,6 +78,8 @@ import mlgoc.mlgoc_segmentation_gm as mlgoc
 import centrosome.outline
 import cellprofiler.preferences as cpp
 
+import mlgoc.objectsml as objectsml
+
 INIT_MODE_SEEDS_MANUAL = "Seeds (manual)"
 INIT_MODE_SEEDS_CIRCULAR_MANUAL = "Circular seeds (manual)"
 INIT_MODE_NEUTRAL = "Neutral"
@@ -96,7 +98,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     variable_revision_number = 1
     category =  "Object Processing"
     module_name = "IdentifyPrimaryObjectsMLGOC"
-
 
     def create_settings(self):
         
@@ -164,7 +165,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         self.save_outlines = cps.OutlineNameProvider(
             'Name the outline image', "PrimaryOutlines", doc="""
              %(NAMING_OUTLINES_HELP)s""" % globals())
-
 
     def settings(self):
         return [self.image_name, self.seed_objects, self.object_name,
@@ -249,7 +249,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         extended_image_height = extended_image.shape[0]
         extended_image_width = extended_image.shape[1]
 
-        extended_image[extended_image>data_parameters['muout']+4*data_parameters['muin']] = data_parameters['muout']+4*data_parameters['muin']
+
+        extended_image[extended_image>(data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout']))] = data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout'])
+
 
         # initialize phase field
         if 'manual'.lower() in self.initialization_type.value.lower():
@@ -281,7 +283,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             extended_image,
             data_parameters,
             kappa,
-            initial_phi,optimization_parameters)
+            initial_phi,
+            optimization_parameters)
+
 
         # label multi-layered segmentation
         labeled_image, object_count = scipy.ndimage.label(final_phi > p[1]['alpha']/p[1]['lambda'],
@@ -305,14 +309,10 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         filtered_image = labeled_image.copy()
 
-        objects = cellprofiler.objects.Objects()
-        # objects.segmented = labeled_image
-        objects.ijv = objects_in.segmented.copy()
-        # objects.set_ijv(labeled_image, shape=(1,1,labeled_image.shape[2],labeled_image.shape[0],labeled_image.shape[1]))
-        # objects.unedited_segmented = labeled_image
-        # objects.small_removed_segmented = labeled_image
-        objects.parent_image = cpimage # must be
-        # workspace.object_set.add_objects(objects,self.object_name.value)
+        o = objectsml.ObjectsML()
+        o.segmented = labeled_image
+        o.parent_image = cpimage
+        workspace.object_set.add_objects(o,self.object_name.value)
         workspace.display_data.statistics = []
 
         if self.show_window:
@@ -370,7 +370,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     def sort_grayscale_objects_to_layers_coloring(self, labels_in, number_of_colors):
         init_phi = np.zeros((number_of_colors,labels_in.shape[0],labels_in.shape[1]))
         colors = IdentifyPrimaryObjectsMLGOC.patch_color_select(labels_in, number_of_colors)
+
         colors = np.array(colors)
+        
         for ll in range(self.number_of_layers.value):
             object_indices_of_layer = np.where(colors==ll)[0]
             temp_layer = np.zeros(labels_in.shape)-1

@@ -23,6 +23,7 @@ def mlgoc_segmentation_gm(parameters_pf,
     extended_image_height = extended_image_size[0]
     extended_image_width = extended_image_size[1]
 
+
     maxd = int(max(map(lambda x:x['d'], parameters_pf)))
     image_height = extended_image_height - 4*maxd
     image_width = extended_image_width - 4*maxd
@@ -74,7 +75,8 @@ def ml_evolution(init_phi,
                                                                    linear_operator,
                                                                    parameters,
                                                                    data_parameters,
-                                                                   ext_image,kappa)
+                                                                   ext_image,
+                                                                   kappa)
         functional_derivative = functional_derivative + overlap_derivative
         max_functional_derivative = np.max(np.abs(functional_derivative))
         delta_t = 1.0/(10.0*max_functional_derivative)
@@ -82,12 +84,16 @@ def ml_evolution(init_phi,
         new_phi = old_phi + delta_phi
         mean_functional_derivative = np.mean(np.abs(functional_derivative ))
 
+        if max_iterations<10:
+            print('Iteration {0:6d} ({1:3d}%)'.format(num_of_iterations, int((100.0 * num_of_iterations) / max_iterations)))
+        elif num_of_iterations % int(max_iterations/10) == 0:
+            print('Iteration {0:6d} ({1:3d}%)'.format(num_of_iterations, int((100.0*num_of_iterations)/max_iterations)))
+
+        old_phi = new_phi
+        num_of_iterations = num_of_iterations + 1
         if mean_functional_derivative < tolerance or num_of_iterations >= max_iterations:
             converged = True
-        num_of_iterations = num_of_iterations+1
-        if num_of_iterations % int(max_iterations/10) == 0:
-            print('Iteration {0:4d} ({1:2d}%)'.format(num_of_iterations, int((100.0*num_of_iterations)/max_iterations)))
-        old_phi = new_phi
+            print('Iteration {0:6d} ({1:3d}%)'.format(max_iterations, 100 ))
     return new_phi
 
 
