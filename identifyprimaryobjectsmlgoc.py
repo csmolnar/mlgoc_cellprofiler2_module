@@ -249,9 +249,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         extended_image_height = extended_image.shape[0]
         extended_image_width = extended_image.shape[1]
 
-
         extended_image[extended_image>(data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout']))] = data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout'])
-
 
         # initialize phase field
         if 'manual'.lower() in self.initialization_type.value.lower():
@@ -267,12 +265,8 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                  ((0,0),(2*maxd,2*maxd),(2*maxd,2*maxd)),
                                  'constant', constant_values=(-1.0,))
         else:
-            pass
             initial_phi = np.array(np.random.normal(0, 0.1,
                                 (self.number_of_layers.value, extended_image_height, extended_image_width)),ndmin=3)
-
-        print('initial_phi')
-        print(initial_phi.shape)
 
         optimization_parameters = {'tolerance': 1e-10,
                                    'max_iterations': self.maximum_iterations.value,
@@ -286,7 +280,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             initial_phi,
             optimization_parameters)
 
-
         # label multi-layered segmentation
         labeled_image, object_count = scipy.ndimage.label(final_phi > p[1]['alpha']/p[1]['lambda'],
             structure=[[[0, 0, 0],[0, 0, 0],[0, 0, 0]],
@@ -294,25 +287,22 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                        [[0, 0, 0],[0, 0, 0],[0, 0, 0]]])
         unedited_labels = labeled_image.copy()
 
-
         if self.should_save_outlines.value:
-            for i in range(self.number_of_layers.value):
-                np.savetxt('D:/temp/finalphi_k{}.csv'.format(i),final_phi[i,:,:],delimiter=",")
+            # for i in range(self.number_of_layers.value):
+            #     np.savetxt('D:/temp/finalphi_k{}.csv'.format(i),final_phi[i,:,:],delimiter=",")
             outlines = np.array(
                 [centrosome.outline.outline(labeled_image[i, :, :]) for i in range(self.number_of_layers.value)])
             outline_image = np.any(outlines > 0, axis=0)
             out_img = cpi.Image(outline_image.astype(bool), parent_image=image)
-            print(outlines.shape)
-            print(outline_image.shape)
-            print(out_img.image.shape)
             workspace.image_set.add(self.save_outlines.value, out_img)
 
         filtered_image = labeled_image.copy()
 
-        o = objectsml.ObjectsML()
-        o.segmented = labeled_image
-        o.parent_image = cpimage
-        workspace.object_set.add_objects(o,self.object_name.value)
+        outobjects = objectsml.ObjectsML()
+        outobjects.segmented = labeled_image
+        outobjects.parent_image = cpimage
+        workspace.object_set.add_objects(outobjects,self.object_name.value)
+        # TODO add center coordinates (add_object_location_measurements from identify)
         workspace.display_data.statistics = []
 
         if self.show_window:
@@ -343,7 +333,8 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     def split_objects(self, labels_in, radius):
         pass
 
-    def centers_of_ml_labels(self, labels):
+    @staticmethod
+    def centers_of_ml_labels(labels):
         unique_labels = np.unique(labels)
         if not len(unique_labels):
             return []
@@ -372,7 +363,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         colors = IdentifyPrimaryObjectsMLGOC.patch_color_select(labels_in, number_of_colors)
 
         colors = np.array(colors)
-        
+
         for ll in range(self.number_of_layers.value):
             object_indices_of_layer = np.where(colors==ll)[0]
             temp_layer = np.zeros(labels_in.shape)-1

@@ -276,13 +276,10 @@ class MeasureObjectIntensityML(cpmmi):
                 for labeli in range(len(unique_values) - 1):
                     label = unique_values[labeli + 1]
                     indices = np.where(labels == label)
-                    print(labeli)
-                    print(indices)
                     if len(indices) == 2:  # 2D label matrix
                         intensities = img[indices]
                     else:
                         intensities = img[(indices[1], indices[2],)]
-                    # print(intensities)
                     integrated_intensity[labeli] = sum(intensities)
                     mean_intensity[labeli] = integrated_intensity[labeli] / len(intensities)
                     std_intensity[labeli] = np.std(intensities)
