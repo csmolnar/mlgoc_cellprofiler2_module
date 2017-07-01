@@ -308,6 +308,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         if self.show_window:
             workspace.display_data.image = image
             workspace.display_data.mask = mask
+            # TODO changle labels_in to the output
             workspace.display_data.labels_in = labels_in
             workspace.display_data.labeled_image = labeled_image
             workspace.display_data.filtered_image = filtered_image
@@ -497,7 +498,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             outlined_axes = figure.subplot(0,1, sharexy = orig_axes)
             final_axes = figure.subplot(1,1, sharexy = orig_axes)
 
-            title = "Input image, cycle #%d"%(workspace.measurements.image_number,)
+            title = "Input image, cycle #%d" % (workspace.measurements.image_number,)
             image = workspace.display_data.image
             ax = figure.subplot_imshow_grayscale(0, 0, image, title)
 

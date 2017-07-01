@@ -68,7 +68,7 @@ import cellprofiler.measurements as cpmeas
 import cellprofiler.objects as cpo
 import cellprofiler.settings as cps
 from cellprofiler.modules.identify import C_LOCATION
-from cellprofiler.modules.measureobjectintensity import MeasureObjectIntensity as cpmmi
+from cellprofiler.modules import measureobjectintensity as cpmmoi
 import mlgoc.objectsml
 
 INTENSITY = 'Intensity'
@@ -100,7 +100,7 @@ ALL_MEASUREMENTS = [INTEGRATED_INTENSITY, MEAN_INTENSITY, STD_INTENSITY,
                         MEDIAN_INTENSITY, MAD_INTENSITY, UPPER_QUARTILE_INTENSITY]
 ALL_LOCATION_MEASUREMENTS = [LOC_CMI_X, LOC_CMI_Y, LOC_MAX_X, LOC_MAX_Y]
 
-class MeasureObjectIntensityML(cpmmi):
+class MeasureObjectIntensityML(cpmmoi.MeasureObjectIntensity):
 
     module_name = "MeasureObjectIntensityML"
     variable_revision_number = 1
@@ -113,8 +113,6 @@ class MeasureObjectIntensityML(cpmmi):
             workspace.display_data.statistics = statistics = []
         for object_name in [obj.name for obj in self.objects]:
             objects = workspace.object_set.get_objects(object_name.value)
-            print(object_name)
-            print(objects)
             if isinstance(objects, mlgoc.objectsml.ObjectsML):
                 self.run_on_objectsml(workspace,object_name,objects)
             else:
@@ -295,7 +293,6 @@ class MeasureObjectIntensityML(cpmmi):
                      (INTENSITY, MAX_INTENSITY, max_intensity)):
                 measurement_name = "%s_%s_%s" % (category, feature_name, image_name.value)
                 m.add_measurement(object_name.value, measurement_name, measurement)
-
                 if self.show_window and len(measurement) > 0:
                     workspace.display_data.statistics.append((image_name.value, object_name.value,
                                                               feature_name,

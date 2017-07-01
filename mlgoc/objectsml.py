@@ -68,10 +68,10 @@ class SegmentationML(object):
     def __init__(self, labels=None, shape=None):
         self.__labels = labels
         if shape is not None:
-            self.__shape = labels.shape
+            self.__shape = shape
             self.__explicit_shape = True
         else:
-            self.__shape = None
+            self.__shape = labels.shape
             self.__explicit_shape = False
 
     def get_shape(self):
