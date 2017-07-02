@@ -79,6 +79,7 @@ import centrosome.outline
 import cellprofiler.preferences as cpp
 
 import mlgoc.objectsml as objectsml
+from cellprofiler.modules.identify import M_LOCATION_CENTER_X, M_LOCATION_CENTER_Y, M_NUMBER_OBJECT_NUMBER
 
 INIT_MODE_SEEDS_MANUAL = "Seeds (manual)"
 INIT_MODE_SEEDS_CIRCULAR_MANUAL = "Circular seeds (manual)"
@@ -302,7 +303,13 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         outobjects.segmented = labeled_image
         outobjects.parent_image = cpimage
         workspace.object_set.add_objects(outobjects,self.object_name.value)
-        # TODO add center coordinates (add_object_location_measurements from identify)
+
+        object_count = len(np.unique(labeled_image))-1
+        cpmi.add_object_count_measurements(workspace.measurements,
+                                           self.object_name.value, object_count)
+        add_object_location_measurements_ml(workspace.measurements,
+                                              self.object_name.value,
+                                              labeled_image)
         workspace.display_data.statistics = []
 
         if self.show_window:
@@ -535,7 +542,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         return self.object_name.value
     
     def get_measurement_columns(self, pipeline):
-        """Column definitions for measurements made by DetectSpots"""
+        """Column definitions for measurements made by IdentifyPrimaryObjectsMLGOC"""
         columns = cpmi.get_object_measurement_columns(self.object_name.value)
         return columns
 
@@ -564,3 +571,67 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         """
         return self.get_threshold_measurement_objects(pipeline, object_name,
                                                       category, measurement)
+
+
+def centers_of_ml_labels(labels):
+    unique_labels = np.unique(labels)
+    if not len(unique_labels):
+        return []
+    elif len(unique_labels) == 1 and not unique_labels[0]:
+        return []
+    else:
+        if labels.ndim > 2:
+            centers = np.zeros((len(unique_labels)-1,2))
+            maxind = 0
+            for i in range(labels.shape[0]):
+                layer = labels[i,:,:]
+                layer_unique_values = np.unique(layer)
+                if not len(layer_unique_values) or len(layer_unique_values) == 1 and not layer_unique_values[0]:
+                    pass
+                else:
+                    cs = np.array( scipy.ndimage.center_of_mass(layer>0, layer, layer_unique_values[1:]) )
+                    print('i: {}'.format(i))
+                    print(cs)
+                    centers[maxind:maxind+len(layer_unique_values)-1, :] = cs
+                    maxind += len(layer_unique_values)-1
+
+            return centers
+        else:
+            return np.array( scipy.ndimage.center_of_mass(labels>0,labels,unique_labels[1:]) )
+
+
+def add_object_location_measurements_ml(measurements, object_name, labels, object_count=None):
+    """Add the X and Y centers of mass to the measurements
+
+    measurements - the measurements container
+    object_name  - the name of the objects being measured
+    labels       - the label matrix
+    object_count - (optional) the object count if known, otherwise
+                   takes the maximum value in the labels matrix which is
+                   usually correct.
+    """
+    if object_count is None:
+        object_count = len(np.unique(labels))-1
+    #
+    # Get the centers of each object - center_of_mass <- list of two-tuples.
+    #
+    if object_count:
+        centers = centers_of_ml_labels(labels)
+        # centers = scipy.ndimage.center_of_mass(np.ones(labels.shape),
+        #                                        labels,
+        #                                        range(1, object_count + 1))
+        centers = np.array(centers)
+        # centers = centers.reshape((object_count, 2))
+        location_center_y = centers[:, 0]
+        location_center_x = centers[:, 1]
+        number = np.array(np.unique(labels)[1:])
+        # number = np.arange(1, object_count + 1)
+    else:
+        location_center_y = np.zeros((0,), dtype=float)
+        location_center_x = np.zeros((0,), dtype=float)
+        number = np.zeros((0,), dtype=int)
+    measurements.add_measurement(object_name, M_LOCATION_CENTER_X,
+                                 location_center_x)
+    measurements.add_measurement(object_name, M_LOCATION_CENTER_Y,
+                                 location_center_y)
+    measurements.add_measurement(object_name, M_NUMBER_OBJECT_NUMBER, number)

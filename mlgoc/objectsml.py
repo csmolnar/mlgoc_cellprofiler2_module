@@ -51,6 +51,7 @@ class ObjectsML(cellprofiler.objects.Objects):
     def relate_labels(self, parent_labels, child_labels):
         pass
 
+    @property
     def count(self):
         return len(np.unique(self.__segmented))-1
 
