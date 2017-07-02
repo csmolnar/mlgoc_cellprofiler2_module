@@ -151,6 +151,7 @@ class ConvertObjectsToImageML(cpmcoi.ConvertObjectsToImage):
     def display(self, workspace, figure):
         pixel_data = workspace.display_data.pixel_data
         if workspace.display_data.objectml:
+            figure.set_subplots((1,1))
             pass
         else:
             figure.set_subplots((2, 1))
