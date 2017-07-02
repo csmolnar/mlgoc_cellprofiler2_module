@@ -231,7 +231,7 @@ class SaveImagesML(cpmsi.SaveImages):
 
         self.file_format = cps.Choice(
             "Saved file format",
-            [FF_BMP, FF_JPG, FF_JPEG, FF_PNG, FF_TIF, FF_TIFF, FF_MAT],
+            [FF_BMP, FF_PNG, FF_TIF, FF_TIFF, FF_MAT],
             value = FF_TIF, doc="""
             <i>(Used only when saving non-movie files)</i><br>
             Select the image or movie format to save the image(s). Most common
@@ -576,16 +576,15 @@ class SaveImagesML(cpmsi.SaveImages):
             elif self.gray_or_color == GC_GRAYSCALE:
                 outpath, basefilename = os.path.split(filename)
                 basename, ext = os.path.splitext(basefilename)
-
                 if objects.count > 255:
                     pixel_type = ome.PT_UINT16
                 else:
                     pixel_type = ome.PT_UINT8
                 for l in range(labels.shape[0]):
                     layer = labels[l,:,:]
-                    layername = os.path.join(outpath, basename + 'l{0:02d}'.format(l) + ext)
+                    layername = os.path.join(outpath, basename + '_l{0:02d}'.format(l) + ext)
                     self.do_save_image(
-                        workspace, layername, layer, pixel_type, size_t=1)
+                        workspace, layername, layer, pixel_type)
             self.save_filename_measurements(workspace)
             if self.show_window:
                 workspace.display_data.wrote_image = True
