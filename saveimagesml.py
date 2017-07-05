@@ -738,7 +738,7 @@ class SaveImagesML(cpmsi.SaveImages):
         if self.get_file_format() == FF_MAT:
             scipy.io.matlab.mio.savemat(filename,{"Image":pixels},format='5')
         elif self.get_file_format() == FF_BMP:
-            save_bmp(filename, pixels)
+            cpmsi.save_bmp(filename, pixels)
         else:
             self.do_save_image(workspace, filename, pixels, pixel_type)
         if self.show_window:
@@ -1031,7 +1031,7 @@ class SaveImagesML(cpmsi.SaveImages):
             when_to_save_movie, rescale, colormap, \
             update_file_names, create_subdirectories = setting_values
 
-            pathname = SaveImagesDirectoryPath.static_join_string(
+            pathname = cpmsi.SaveImagesDirectoryPath.static_join_string(
                 pathname_choice, pathname)
 
             setting_values = [

@@ -140,6 +140,7 @@ from cellprofiler.modules.identify import FI_IMAGE_SIZE
 import centrosome.threshold as cpthresh
 import centrosome.otsu
 from centrosome.propagate import propagate
+from centrosome.cpmorphology import color_labels
 from centrosome.cpmorphology import fill_labeled_holes
 from centrosome.cpmorphology import fixup_scipy_ndimage_result as fix
 from centrosome.watershed import watershed
@@ -147,7 +148,6 @@ from centrosome.filter import stretch
 from centrosome.outline import outline
 from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
 import mlgoc.objectsml as objectsml
-import copy
 from identifyprimaryobjectsmlgoc import add_object_location_measurements_ml
 import cellprofiler.preferences as cpp
 
@@ -163,10 +163,11 @@ N_SETTING_VALUES = 14
 '''Parent (seed) relationship of input objects to output objects'''
 R_PARENT = "Parent"
 
+
 class IdentifySecondaryObjectsML(cpmi.Identify):
 
     module_name = "IdentifySecondaryObjectsML"
-    variable_revision_number = 9
+    variable_revision_number = 1
     category = "Object Processing"
 
     def create_settings(self):
@@ -525,6 +526,10 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
             else:
                 raise NotImplementedError(("Finding secondary objects by %s method is not yet supported" %
                                            (self.method)))
+            # TODO implement filling holes
+            # TODO implement discarding border objects
+            # TODO implement retain outlines as separate (single layered) objects
+
             # if self.fill_holes:
             #     small_removed_segmented_out = fill_labeled_holes(labels_out)
             # else:
@@ -644,15 +649,15 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
                                                  cpmi.FF_PARENT%parent_name,
                                                  parents_of_children)
             if self.show_window:
+                workspace.display_data.multi_layered = True
                 object_area = np.sum(np.any(segmented_out,0) > 0)
                 workspace.display_data.object_pct = 100 * object_area / np.product(segmented_out.shape[1:])
                 workspace.display_data.img = img
                 workspace.display_data.segmented_out = segmented_out
-                workspace.display_data.color_class_image = create_contour_class_image(labels_in)
+                workspace.display_data.color_class_image = create_contour_class_image(segmented_out)
                 workspace.display_data.primary_labels = inobjects.get_labels()
                 workspace.display_data.global_threshold = global_threshold
                 workspace.display_data.object_count = object_count
-
         else:
 
             #
@@ -862,6 +867,7 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
                                                  cpmi.FF_PARENT%parent_name,
                                                  parents_of_children)
             if self.show_window:
+                workspace.display_data.multi_layered = False
                 object_area = np.sum(segmented_out > 0)
                 workspace.display_data.object_pct = \
                     100 * object_area / np.product(segmented_out.shape)
@@ -881,53 +887,99 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
         global_threshold = workspace.display_data.global_threshold
         object_count = workspace.display_data.object_count
         statistics = workspace.display_data.statistics
-        color_class_image = workspace.display_data.color_class_image
+        # TODO check for single layered objects
 
-        if global_threshold is not None:
-            statistics.append(["Threshold","%.3f" % global_threshold])
+        if workspace.display_data.multi_layered:
+            color_class_image = workspace.display_data.color_class_image
 
-        if object_count > 0:
-            areas = scind.sum(np.ones(segmented_out.shape), segmented_out, np.arange(1, object_count + 1))
-            areas.sort()
-            low_diameter  = (np.sqrt(float(areas[object_count / 10]) / np.pi) * 2)
-            median_diameter = (np.sqrt(float(areas[object_count / 2]) / np.pi) * 2)
-            high_diameter = (np.sqrt(float(areas[object_count * 9 / 10]) / np.pi) * 2)
-            statistics.append(["10th pctile diameter",
-                               "%.1f pixels" % (low_diameter)])
-            statistics.append(["Median diameter",
-                               "%.1f pixels" % (median_diameter)])
-            statistics.append(["90th pctile diameter",
-                               "%.1f pixels" % (high_diameter)])
-            if self.method != M_DISTANCE_N and self.threshold_scope != TS_BINARY_IMAGE:
-                statistics.append(["Thresholding filter size",
-                                "%.1f"%(workspace.display_data.threshold_sigma)])
-            statistics.append(["Area covered by objects", "%.1f %%" % object_pct])
-        workspace.display_data.statistics = statistics
+            if global_threshold is not None:
+                statistics.append(["Threshold","%.3f" % global_threshold])
 
-        figure.set_subplots((2, 2))
-        title = "Input image, cycle #%d" % (workspace.measurements.image_number)
-        figure.subplot_imshow_grayscale(0, 0, img, title)
-        figure.subplot_imshow_color(1, 0, color_class_image, "%s objects" % self.objects_name.value,
-                                       sharexy = figure.subplot(0, 0))
+            if object_count > 0:
+                areas = scind.sum(np.ones(segmented_out.shape), segmented_out, np.arange(1, object_count + 1))
+                areas.sort()
+                low_diameter  = (np.sqrt(float(areas[object_count / 10]) / np.pi) * 2)
+                median_diameter = (np.sqrt(float(areas[object_count / 2]) / np.pi) * 2)
+                high_diameter = (np.sqrt(float(areas[object_count * 9 / 10]) / np.pi) * 2)
+                statistics.append(["10th pctile diameter",
+                                   "%.1f pixels" % (low_diameter)])
+                statistics.append(["Median diameter",
+                                   "%.1f pixels" % (median_diameter)])
+                statistics.append(["90th pctile diameter",
+                                   "%.1f pixels" % (high_diameter)])
+                if self.method != M_DISTANCE_N and self.threshold_scope != TS_BINARY_IMAGE:
+                    statistics.append(["Thresholding filter size",
+                                    "%.1f"%(workspace.display_data.threshold_sigma)])
+                statistics.append(["Area covered by objects", "%.1f %%" % object_pct])
+            workspace.display_data.statistics = statistics
 
-        layer_colors = [(0, 255, 0), (0, 127, 255), (0, 0, 255), (0, 255, 255), (0, 255, 127)]
-        cplabels = [dict(name=self.primary_objects.value+" ({}. layer)".format(ll+1),
-                    labels=[primary_labels[ll,:,:]],
-                    outline_color=cpp.tuple_to_color(layer_colors[ll % primary_labels.shape[0]]))
-                    for ll in range(primary_labels.shape[0])]
-        cplabels.extend([dict(name=self.objects_name.value+" ({}. layer)".format(ll+1),
-                    labels=[segmented_out[ll, :, :]],
-                    outline_color=cpp.tuple_to_color(layer_colors[ll % segmented_out.shape[0]]))
-                    for ll in range(segmented_out.shape[0])])
-        title = "%s and %s outlines" %(
-            self.primary_objects.value, self.objects_name.value)
-        figure.subplot_imshow_grayscale(
-            0, 1, img, title = title, cplabels = cplabels,
-            sharexy = figure.subplot(0, 0))
-        figure.subplot_table(
-            1, 1,
-            [[x[1]] for x in workspace.display_data.statistics],
-            row_labels = [x[0] for x in workspace.display_data.statistics])
+            figure.set_subplots((2, 2))
+            title = "Input image, cycle #%d" % (workspace.measurements.image_number)
+            figure.subplot_imshow_grayscale(0, 0, img, title)
+            figure.subplot_imshow_color(1, 0, color_class_image, "%s objects" % self.objects_name.value,
+                                           sharexy = figure.subplot(0, 0))
+
+            layer_colors_primary = [(0, 255, 0), (0, 127, 255), (0, 0, 255), (0, 255, 255), (0, 255, 127)]
+            layer_colors_secondary = [(255, 153, 255), (255, 153, 204), (255, 153, 153), (255, 153, 102), (255, 153, 51)]
+            cplabels = [dict(name=self.primary_objects.value+" ({}. layer)".format(ll+1),
+                        labels=[primary_labels[ll,:,:]],
+                        outline_color=cpp.tuple_to_color(layer_colors_primary[ll % primary_labels.shape[0]]))
+                        for ll in range(primary_labels.shape[0])]
+            cplabels.extend([dict(name=self.objects_name.value+" ({}. layer)".format(ll+1),
+                        labels=[segmented_out[ll, :, :]],
+                        outline_color=cpp.tuple_to_color(layer_colors_secondary[ll % segmented_out.shape[0]]))
+                        for ll in range(segmented_out.shape[0])])
+            title = "%s and %s outlines" %(
+                self.primary_objects.value, self.objects_name.value)
+            figure.subplot_imshow_grayscale(
+                0, 1, img, title = title, cplabels = cplabels,
+                sharexy = figure.subplot(0, 0))
+            figure.subplot_table(
+                1, 1,
+                [[x[1]] for x in workspace.display_data.statistics],
+                row_labels = [x[0] for x in workspace.display_data.statistics])
+        else:
+            if global_threshold is not None:
+                statistics.append(["Threshold", "%.3f" % global_threshold])
+
+            if object_count > 0:
+                areas = scind.sum(np.ones(segmented_out.shape), segmented_out, np.arange(1, object_count + 1))
+                areas.sort()
+                low_diameter = (np.sqrt(float(areas[object_count / 10]) / np.pi) * 2)
+                median_diameter = (np.sqrt(float(areas[object_count / 2]) / np.pi) * 2)
+                high_diameter = (np.sqrt(float(areas[object_count * 9 / 10]) / np.pi) * 2)
+                statistics.append(["10th pctile diameter",
+                                   "%.1f pixels" % (low_diameter)])
+                statistics.append(["Median diameter",
+                                   "%.1f pixels" % (median_diameter)])
+                statistics.append(["90th pctile diameter",
+                                   "%.1f pixels" % (high_diameter)])
+                if self.method != M_DISTANCE_N and self.threshold_scope != TS_BINARY_IMAGE:
+                    statistics.append(["Thresholding filter size",
+                                       "%.1f" % (workspace.display_data.threshold_sigma)])
+                statistics.append(["Area covered by objects", "%.1f %%" % object_pct])
+            workspace.display_data.statistics = statistics
+
+            figure.set_subplots((2, 2))
+            title = "Input image, cycle #%d" % (workspace.measurements.image_number)
+            figure.subplot_imshow_grayscale(0, 0, img, title)
+            figure.subplot_imshow_labels(1, 0, segmented_out, "%s objects" % self.objects_name.value,
+                                         sharexy=figure.subplot(0, 0))
+
+            cplabels = [
+                dict(name=self.primary_objects.value,
+                     labels=[primary_labels]),
+                dict(name=self.objects_name.value,
+                     labels=[segmented_out])]
+            title = "%s and %s outlines" % (
+                self.primary_objects.value, self.objects_name.value)
+            figure.subplot_imshow_grayscale(
+                0, 1, img, title=title, cplabels=cplabels,
+                sharexy=figure.subplot(0, 0))
+            figure.subplot_table(
+                1, 1,
+                [[x[1]] for x in workspace.display_data.statistics],
+                row_labels=[x[0] for x in workspace.display_data.statistics])
 
     def filter_labels(self, labels_out, objects, workspace):
         """Filter labels out of the output
@@ -1096,5 +1148,4 @@ def create_contour_class_image(labels):
     return color_class_image
 
 
-
-IdentifySecondary = IdentifySecondaryObjectsML
+IdentifySecondaryMLGOC = IdentifySecondaryObjectsML

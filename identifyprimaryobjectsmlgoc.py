@@ -219,9 +219,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         image = cpimage.pixel_data
         mask = cpimage.mask
 
-        image_width = image.shape[0]
-        image_height = image.shape[1]
-
         objects_in = workspace.object_set.get_objects(self.seed_objects.value)
         labels_in = objects_in.segmented.copy()
         labels_in_mask = labels_in>0
@@ -246,15 +243,18 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         maxd = int(max(map(lambda x: x['d'], prior_phase_field_parameters)))
 
-        extended_image = np.pad(image, ((2*maxd,2*maxd),(2*maxd,2*maxd)), 'constant', constant_values=(self.mu_out.value,))
+        extended_image = np.pad(image,
+                                ((2*maxd, 2*maxd), (2*maxd, 2*maxd)),
+                                'constant', constant_values=(self.mu_out.value,))
         extended_image_height = extended_image.shape[0]
         extended_image_width = extended_image.shape[1]
 
-        extended_image[extended_image>(data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout']))] = data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout'])
+        extended_image[extended_image>(data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout']))] =\
+            data_parameters['muout']+4*(data_parameters['muin']-data_parameters['muout'])
 
         # initialize phase field
         if 'manual'.lower() in self.initialization_type.value.lower():
-            # TODO: labels_in, n = split_objects(labels_in,max_label,radius)
+            # TODO: "labels_in, n = split_objects(labels_in,max_label,radius)"
             initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, self.number_of_layers.value)
             if self.initialization_type == "Seeds (manual)":
                 # TODO: ?nothing
@@ -289,8 +289,6 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         unedited_labels = labeled_image.copy()
 
         if self.should_save_outlines.value:
-            # for i in range(self.number_of_layers.value):
-            #     np.savetxt('D:/temp/finalphi_k{}.csv'.format(i),final_phi[i,:,:],delimiter=",")
             outlines = np.array(
                 [centrosome.outline.outline(labeled_image[i, :, :]) for i in range(self.number_of_layers.value)])
             outline_image = np.any(outlines > 0, axis=0)
@@ -301,6 +299,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         outobjects = objectsml.ObjectsML()
         outobjects.segmented = labeled_image
+        outobjects.unedited_segmented = unedited_labels
         outobjects.parent_image = cpimage
         workspace.object_set.add_objects(outobjects,self.object_name.value)
 
@@ -573,6 +572,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         """
         return self.get_threshold_measurement_objects(pipeline, object_name,
                                                       category, measurement)
+
+
+IdentifyPrimaryMLGOC = IdentifyPrimaryObjectsMLGOC
 
 
 def centers_of_ml_labels(labels):
