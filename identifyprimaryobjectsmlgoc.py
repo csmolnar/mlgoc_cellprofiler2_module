@@ -518,7 +518,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             labeled_image = workspace.display_data.labeled_image
             layer_colors = [(0,255,0),(0,127,255),(0,0,255),(0,255,255),(0,255,127)]
             cplabels = [dict(name=self.object_name.value+" ({}. layer)".format(ll+1),
-                        labels=[labeled_image[ll,:,:]],outline_color=cpp.tuple_to_color(layer_colors[ll%self.number_of_layers.value])) for ll in range(self.number_of_layers.value)]
+                        labels=[labeled_image[ll,:,:]],
+                        outline_color=cpp.tuple_to_color(layer_colors[ll%self.number_of_layers.value]))
+                        for ll in range(self.number_of_layers.value)]
             title = "{} outlines".format(self.object_name.value)
             figure.subplot_imshow_grayscale(
                 0, 1, image, title, cplabels=cplabels, sharexy=ax)
@@ -590,8 +592,6 @@ def centers_of_ml_labels(labels):
                     pass
                 else:
                     cs = np.array( scipy.ndimage.center_of_mass(layer>0, layer, layer_unique_values[1:]) )
-                    print('i: {}'.format(i))
-                    print(cs)
                     centers[maxind:maxind+len(layer_unique_values)-1, :] = cs
                     maxind += len(layer_unique_values)-1
 
