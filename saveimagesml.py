@@ -114,7 +114,7 @@ OFFSET_BIT_DEPTH_V11 = 12
 class SaveImagesML(cpmsi.SaveImages):
 
     module_name = "SaveImagesML"
-    variable_revision_number = 1
+    variable_revision_number = 11
     category = "File Processing"
 
     def create_settings(self):

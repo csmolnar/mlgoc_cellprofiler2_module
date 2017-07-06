@@ -167,7 +167,7 @@ R_PARENT = "Parent"
 class IdentifySecondaryObjectsML(cpmi.Identify):
 
     module_name = "IdentifySecondaryObjectsML"
-    variable_revision_number = 1
+    variable_revision_number = 9
     category = "Object Processing"
 
     def create_settings(self):
@@ -569,9 +569,7 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
                     workspace.image_set.add(self.new_primary_outlines_name.value,
                                             out_img)
             else:
-                # primary_outline = outline(inobjects.segmented)
                 primary_outline = np.array([outline(labels_in[i,:,:]) for i in range(labels_in.shape[0])])
-            # secondary_outline = outline(segmented_out)
             secondary_outline = np.array([outline(segmented_out[i,:,:]) for i in range(segmented_out.shape[0])])
             #
             # Add the objects to the object set
@@ -581,18 +579,10 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
             outobjects.unedited_segmented = segmented_out
             outobjects.parent_image = image
             workspace.object_set.add_objects(outobjects, self.objects_name.value)
-
-            # objects_out = cpo.Objects()
-            # objects_out.unedited_segmented = small_removed_segmented_out
-            # objects_out.small_removed_segmented = small_removed_segmented_out
-            # objects_out.segmented = segmented_out
-            # objects_out.parent_image = image
-            # objname = self.objects_name.value
-            # workspace.object_set.add_objects(objects_out, objname)
-            # if self.use_outlines.value:
-            #     out_img = cpi.Image(secondary_outline.astype(bool),
-            #                         parent_image = image)
-            #     workspace.image_set.add(self.outlines_name.value, out_img)
+            if self.use_outlines.value:
+                outline_image = np.any(secondary_outline > 0, axis=0)
+                out_img = cpi.Image(outline_image.astype(bool), parent_image=image)
+                workspace.image_set.add(self.save_outlines.value, out_img)
 
             #
             # Add measurements
@@ -652,6 +642,7 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
                 workspace.display_data.multi_layered = True
                 object_area = np.sum(np.any(segmented_out,0) > 0)
                 workspace.display_data.object_pct = 100 * object_area / np.product(segmented_out.shape[1:])
+                # TODO data about estimated overlapping
                 workspace.display_data.img = img
                 workspace.display_data.segmented_out = segmented_out
                 workspace.display_data.color_class_image = create_contour_class_image(segmented_out)
