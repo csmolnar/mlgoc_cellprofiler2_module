@@ -14,9 +14,7 @@ class ObjectsML(cellprofiler.objects.Objects):
         return self.__segmented
 
     def set_segmented(self,labels):
-        # TODO change when unedited will be stored
         self.__segmented = SegmentationML(labels=labels)
-        self.__unedited_segmented = SegmentationML(labels=labels)
         self.__small_removed_segmented = SegmentationML(labels=labels)
 
     segmented = property(get_segmented, set_segmented)
@@ -28,15 +26,6 @@ class ObjectsML(cellprofiler.objects.Objects):
         self.__unedited_segmented = SegmentationML(labels=labels)
 
     unedited_segmented = property(get_unedited_segmented, set_unedited_segmented)
-
-    def get_small_removed_segmented(self):
-        return self.__small_removed_segmented
-
-    def set_small_removed_segmented(self,labels):
-        self.__small_removed_segmented = SegmentationML(labels=labels)
-
-    small_removed_segmented = property(get_small_removed_segmented,
-                                       set_small_removed_segmented)
 
     @property
     def shape(self):
@@ -64,12 +53,10 @@ class ObjectsML(cellprofiler.objects.Objects):
     has_parent_image = property(get_has_parent_image)
 
     def relate_children(self, children):
-        # TODO implement!
-        histogram = self.histogram_from_labels(self.get_labels(), children.get_labels())
         pass
 
-    # def relate_labels(self, parent_labels, child_labels):
-    #     pass
+    def relate_labels(self, parent_labels, child_labels):
+        pass
 
     @property
     def count(self):
