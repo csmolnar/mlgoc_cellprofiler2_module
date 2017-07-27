@@ -70,9 +70,6 @@ import scipy.stats
 from cellprofiler.modules import identify as cpmi
 import cellprofiler.cpimage as cpi
 import cellprofiler.settings as cps
-import cellprofiler.cpmath.outline
-import cellprofiler.objects
-from cellprofiler.gui.help import RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
 import mlgoc.compute_mlgoc_parameters as cmp
 import mlgoc.mlgoc_segmentation_gm as mlgoc
 import centrosome.outline
@@ -80,6 +77,7 @@ import cellprofiler.preferences as cpp
 
 import mlgoc.objectsml as objectsml
 from cellprofiler.modules.identify import M_LOCATION_CENTER_X, M_LOCATION_CENTER_Y, M_NUMBER_OBJECT_NUMBER
+from cellprofiler.gui.help import HELP_ON_MEASURING_DISTANCES, RETAINING_OUTLINES_HELP, NAMING_OUTLINES_HELP
 
 INIT_MODE_SEEDS_MANUAL = "Seeds (manual)"
 INIT_MODE_SEEDS_CIRCULAR_MANUAL = "Circular seeds (manual)"
@@ -295,6 +293,24 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             out_img = cpi.Image(outline_image.astype(bool), parent_image=image)
             workspace.image_set.add(self.save_outlines.value, out_img)
 
+        # TODO: remove embedded objects
+        labeled_image = self.filter_on_embedded(labeled_image)
+
+        # TODO: remove small objects
+        size_excluded_labeled_image = labeled_image.copy()
+        labeled_image, small_removed_labels = \
+            self.filter_on_size(labeled_image, object_count)
+        size_excluded_labeled_image[labeled_image>0] = 0 # to store outlines of discarded objects on size
+        # TODO: merge overlapping objects if JI>0.8
+        # unedited_labels = state after merging
+        labeled_image = self.merge_overlapping_objects(labeled_image, 0.8, self.preferred_radius.value)
+        unedited_labels = labeled_image.copy()
+
+        # TODO: remove overlapping objects (setting of module)
+        # TODO: remove objects that are touching the border (setting)
+
+        # bwlabel
+
         filtered_image = labeled_image.copy()
 
         outobjects = objectsml.ObjectsML()
@@ -421,21 +437,110 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         return colors
 
-    def remove_embedded_objects(self, labels):
-        pass
+    def filter_on_embedded(self, labels):
+        discard_incides = []
+        for ll in range(self.number_of_layers.value):
+            uv = np.unique(labels[ll,:,:])
+            if len(uv) > 1:
+                for Object in uv[1:]:
+                    for lll in range(self.number_of_layers.value):
+                        if ll==lll:
+                            continue
+                        else:
+                            # compare the union of an object with the same layer
+                            if np.array_equal(np.logical_or(labels[ll,:,:]==Object, labels[lll,:,:]>0), labels[lll,:,:]>0):
+                                discard_incides.insert(Object)
+        for i in range(len(discard_incides)):
+            labels[labels==discard_incides[i]] = 0
+        labels, object_count = scipy.ndimage.label(labels)
+        print('{} embedded object were removed.'.format(len(discard_incides)))
+        return labels.copy()
 
-    def filter_on_size(self, labels):
-        pass
+    def filter_on_size(self, labels, object_count):
+        if object_count>0:
+            areas = scipy.ndimage.measurements.sum(np.ones(labels.shape),
+                                                   labels,
+                                                   np.array(np.unique(labels),dtype=np.int32))
+            areas = np.array(areas,dtype=int)
+            min_allowed_area = np.pi * (self.preferred_radius.value * self.preferred_radius.value)
+            area_image = areas[labels]
+            labels[area_image < min_allowed_area] = 0
+            small_removed_labels = labels.copy()
+        else:
+            small_removed_labels = labels.copy()
+        return (labels, small_removed_labels)
 
-    def merge_overlapping_objects(self, labels, JI_threshold, radius):
+    def merge_overlapping_objects(self, labels, JI_threshold=0.8, radius=None):
         """Merge objects having overlap degree over a certain threshold
 
         In addition, if the image has a mask, merge the corresponding mask objecst.
         """
-        pass
+        if radius==None:
+            radius = self.preferred_radius.value
+        ooindices, ool, oocentroids = self.get_overlapping_object_indices(labels)
+        removed_idx_list = []
+        for ooi_index in range(len(ooindices)):
+            ooi = ooindices[ooi_index]
+            if ooi not in removed_idx_list:
+                for ooj_index in range(len(ooindices)):
+                    ooj = ooindices[ooj_index]
+                    if ooj not in removed_idx_list and ooi!=ooj:
+                        if (oocentroids[ooi_index][0]-oocentroids[ooj_index])**2+(oocentroids[ooi_index][1]-oocentroids[ooj_index][1])**2 < radius**2*100:
+                            obj_i = labels[ool[ooi_index], :, :]
+                            obj_i[obj_i!=ooi] = 0
+                            obj_i[obj_i==ooi] = 1
+                            obj_j = labels[ool[ooj_index], :, :]
+                            obj_j[obj_j!=ooj] = 0
+                            obj_j[obj_j==ooj] = 1
+                            if jaccard_index(obj_i,obj_j)>JI_threshold:
+                                merged_object = np.logical_or(obj_i, obj_j)
+                                labels[ool[ooi_index],:,:] -= ooi*(obj_i-merged_object)
+                                labels[ool[ooj_index],:,:] -= ooj*obj_j
+                                removed_idx_list.append(ooj)
+        return labels # after merging
 
-    def filter_on_overlap_level(self, labels, JI_threshold, radius):
-        pass
+    def filter_on_overlap_level(self, labels, JI_threshold, radius=None):
+        if radius==None:
+            radius = self.preferred_radius.value
+        ooindices, ool, ooc = self.get_overlapping_object_indices(labels)
+        removed_indices_list = []
+        for ooi_index in range(len(ooindices)):
+            ooi = ooindices[ooi_index]
+            obj_i = labels[ool[ooi_index],:,:]
+            obj_i[obj_i!=ooi] = 0
+            obj_i[obj_i==ooi] = 1
+            if ooi not in removed_indices_list:
+                area_i = obj_i.sum()
+                for ooj_index in range(len(ooindices)):
+                    ooj = ooindices[ooj_index]
+                    if ooj not in removed_indices_list and ooi!=ooj:
+                        if (ooc[ooi_index][0]-ooc[ooj_index][0])**2+(ooc[ooi_index][1]-ooc[ooj_index][1])**2<radius**2*100:
+                            obj_j = labels[ool[ooj_index],:,:]
+                            obj_j[obj_j!=ooj] = 1
+                            obj_j[obj_j==ooj] = 0
+                            area_j = obj_j.sum()
+
+                            if area_i>area_j:
+                                bigger_index = ooi
+                            else:
+                                bigger_index = ooj
+
+                            if bigger_index in removed_indices_list:
+                                continue
+
+                            if area_i>area_j:
+                                ji = jaccard_index(obj_j, np.logical_and(obj_i,obj_j))
+                            else:
+                                ji = jaccard_index(obj_i, np.logical_and(obj_i, obj_j))
+
+                            if ji>JI_threshold:
+                                removed_indices_list.append(bigger_index)
+
+        for removed_index in removed_indices_list:
+            labels[labels==removed_index] = 0
+
+        print('{} object(s) were(was) discarded.'.format(len(removed_indices_list)))
+        return labels
 
     def filter_on_border(self, labels):
         """Filter out objects touching the border
@@ -573,6 +678,36 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         return self.get_threshold_measurement_objects(pipeline, object_name,
                                                       category, measurement)
 
+    @staticmethod
+    def get_overlapping_object_indices(layers):
+        if layers.ndim > 2:
+            layer_num = layers.shape[0]
+            ltemp = layers.copy()
+            ltemp[ltemp > 0] = 1
+            overlap_map = np.sum(ltemp, axis=0)
+            overlap_map[overlap_map > 1] = 2
+        else:
+            layer_num = 1
+            overlap_map = layers > 0
+        ooindices = []
+        ool = []
+        ooc = []
+        for ll in range(layer_num):
+            uv = np.unique(layers[ll,:,:])
+            if len(uv) > 1:
+                for obj in uv[1:]:
+                    object_on_layer = layers[ll,:,:]
+                    object_on_layer[object_on_layer != obj] = 0
+                    object_on_layer[object_on_layer == obj] = 1
+                    hit_test = np.logical_and(overlap_map == 2, scipy.ndimage.binary_erosion(object_on_layer,
+                                                            structure=np.array([[0,1,0],[1,1,1],[0,1,0]])) )
+                    if hit_test.any():
+                        ooindices.append(obj)
+                        ool.append(ll)
+                        centr = scipy.ndimage.center_of_mass(object_on_layer)
+                        ooc.append([centr])
+        return ooindices, ool, ooc
+
 
 IdentifyPrimaryMLGOC = IdentifyPrimaryObjectsMLGOC
 
@@ -637,3 +772,17 @@ def add_object_location_measurements_ml(measurements, object_name, labels, objec
     measurements.add_measurement(object_name, M_LOCATION_CENTER_Y,
                                  location_center_y)
     measurements.add_measurement(object_name, M_NUMBER_OBJECT_NUMBER, number)
+
+
+def jaccard_index(o1, o2):
+    im1 = np.asarray(o1).astype(np.bool)
+    im2 = np.asarray(o2).astype(np.bool)
+
+    if im1.shape != im2.shape:
+        raise ValueError("Shape mismatch: im1 and im2 must have the same shape.")
+
+    intersection = np.logical_and(im1, im2)
+
+    union = np.logical_or(im1, im2)
+
+    return intersection.sum() / float(union.sum())

@@ -231,7 +231,7 @@ class SaveImagesML(cpmsi.SaveImages):
 
         self.file_format = cps.Choice(
             "Saved file format",
-            [FF_BMP, FF_PNG, FF_TIF, FF_TIFF, FF_MAT],
+            [FF_PNG, FF_TIF, FF_TIFF, FF_MAT],
             value = FF_TIF, doc="""
             <i>(Used only when saving non-movie files)</i><br>
             Select the image or movie format to save the image(s). Most common

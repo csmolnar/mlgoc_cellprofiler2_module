@@ -238,27 +238,32 @@ class IdentifyTertiaryObjectsML(cpm.CPModule):
             #
             # Relate tertiary objects to their parents & record
             #
-            child_count_of_secondary, secondary_parents = \
-                secondary_objects.relate_labels(secondary_objects.get_labels(), tertiary_objects.get_labels())
-            if self.shrink_primary:
-                child_count_of_primary, primary_parents = \
-                    primary_objects.relate_labels(primary_objects.get_labels(), tertiary_objects.get_labels())
-            else:
-                # Primary and tertiary don't overlap.
-                # Establish overlap between primary and secondary and commute
-                _, secondary_of_primary = \
-                    secondary_objects.relate_labels(secondary_objects.get_labels(), primary_objects.get_labels())
-                mask = secondary_of_primary != 0
-                child_count_of_primary = np.zeros(mask.shape, int)
-                child_count_of_primary[mask] = child_count_of_secondary[
-                    secondary_of_primary[mask] - 1]
-                primary_parents = np.zeros(secondary_parents.shape,
-                                           secondary_parents.dtype)
-                primary_of_secondary = np.zeros(secondary_objects.count+1, int)
-                primary_of_secondary[secondary_of_primary] = \
-                    np.arange(1, len(secondary_of_primary)+1)
-                primary_of_secondary[0] = 0
-                primary_parents = primary_of_secondary[secondary_parents]
+            # TODO relate
+            child_count_of_secondary = np.ones((tertiary_objects.count,))
+            secondary_parents = np.unique(tertiary_labels)[1:]
+            primary_parents = secondary_parents.copy()
+            child_count_of_primary = child_count_of_secondary.copy()
+            # child_count_of_secondary, secondary_parents = \
+            #     secondary_objects.relate_labels(secondary_objects.get_labels(), tertiary_objects.get_labels())
+            # if self.shrink_primary:
+            #     child_count_of_primary, primary_parents = \
+            #         primary_objects.relate_labels(primary_objects.get_labels(), tertiary_objects.get_labels())
+            # else:
+            #     # Primary and tertiary don't overlap.
+            #     # Establish overlap between primary and secondary and commute
+            #     _, secondary_of_primary = \
+            #         secondary_objects.relate_labels(secondary_objects.get_labels(), primary_objects.get_labels())
+            #     mask = secondary_of_primary != 0
+            #     child_count_of_primary = np.zeros(mask.shape, int)
+            #     child_count_of_primary[mask] = child_count_of_secondary[
+            #         secondary_of_primary[mask] - 1]
+            #     primary_parents = np.zeros(secondary_parents.shape,
+            #                                secondary_parents.dtype)
+            #     primary_of_secondary = np.zeros(secondary_objects.count+1, int)
+            #     primary_of_secondary[secondary_of_primary] = \
+            #         np.arange(1, len(secondary_of_primary)+1)
+            #     primary_of_secondary[0] = 0
+            #     primary_parents = primary_of_secondary[secondary_parents]
             #
             # Write out the objects
             #

@@ -595,9 +595,12 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
             #
             # Relate the secondary objects to the primary ones and record
             # the relationship.
-            #
-            children_per_parent, parents_of_children = \
-                inobjects.relate_labels(inobjects.get_labels(), outobjects.get_labels())
+
+            # TODO relate objects
+            children_per_parent = np.ones((object_count,))
+            parents_of_children = np.unique(segmented_out)[1:]
+            # children_per_parent, parents_of_children = \
+            #     inobjects.relate_labels(inobjects.get_labels(), outobjects.get_labels())
             measurements.add_measurement(self.primary_objects.value,
                                          cpmi.FF_CHILDREN_COUNT%self.objects_name.value,
                                          children_per_parent)
