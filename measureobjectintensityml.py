@@ -394,43 +394,43 @@ class MeasureObjectIntensityML(cpmmoi.MeasureObjectIntensity):
                     order = np.lexsort((mimg, mlimg))
                     areas = lcount.astype(int)
                     indices = np.cumsum(areas) - areas
-                    for dest, fraction in (
-                            (lower_quartile_intensity, 1.0 / 4.0),
-                            (median_intensity, 1.0 / 2.0),
-                            (upper_quartile_intensity, 3.0 / 4.0)):
-                        qindex = indices.astype(float) + areas * fraction
-                        qfraction = qindex - np.floor(qindex)
-                        qindex = qindex.astype(int)
-                        qmask = qindex < indices + areas - 1
-                        qi = qindex[qmask]
-                        qf = qfraction[qmask]
-                        dest[layer] = (
-                            mimg[order[qi]] * (1 - qf) +
-                            mimg[order[qi + 1]] * qf)
-                        #
-                        # In some situations (e.g. only 3 points), there may
-                        # not be an upper bound.
-                        #
-                        qmask = (~qmask) & (areas > 0)
-                        if qmask:
-                            dest[layer] = mimg[order[qindex[qmask]]]
+                    # for dest, fraction in (
+                    #         (lower_quartile_intensity, 1.0 / 4.0),
+                    #         (median_intensity, 1.0 / 2.0),
+                    #         (upper_quartile_intensity, 3.0 / 4.0)):
+                    #     qindex = indices.astype(float) + areas * fraction
+                    #     qfraction = qindex - np.floor(qindex)
+                    #     qindex = qindex.astype(int)
+                    #     qmask = qindex < indices + areas - 1
+                    #     qi = qindex[qmask]
+                    #     qf = qfraction[qmask]
+                    #     dest[layer] = (
+                    #         mimg[order[qi]] * (1 - qf) +
+                    #         mimg[order[qi + 1]] * qf)
+                    #     #
+                    #     # In some situations (e.g. only 3 points), there may
+                    #     # not be an upper bound.
+                    #     #
+                    #     qmask = (~qmask) & (areas > 0)
+                    #     if qmask:
+                    #         dest[layer] = mimg[order[qindex[qmask]]]
                     #
                     # Once again, for the MAD
                     #
-                    madimg = np.abs(mimg - median_intensity[layer])
-                    order = np.lexsort((madimg, mlimg))
-                    qindex = indices.astype(float) + areas / 2.0
-                    qfraction = qindex - np.floor(qindex)
-                    qindex = qindex.astype(int)
-                    qmask = qindex < indices + areas - 1
-                    qi = qindex[qmask]
-                    qf = qfraction[qmask]
-                    mad_intensity[layer] = (
-                        madimg[order[qi]] * (1 - qf) +
-                        madimg[order[qi + 1]] * qf)
-                    qmask = (~qmask) & (areas > 0)
-                    if qmask:
-                        mad_intensity[layer] = madimg[order[qindex[qmask]]]
+                    # madimg = np.abs(mimg - median_intensity[layer])
+                    # order = np.lexsort((madimg, mlimg))
+                    # qindex = indices.astype(float) + areas / 2.0
+                    # qfraction = qindex - np.floor(qindex)
+                    # qindex = qindex.astype(int)
+                    # qmask = qindex < indices + areas - 1
+                    # qi = qindex[qmask]
+                    # qf = qfraction[qmask]
+                    # mad_intensity[layer] = (
+                    #     madimg[order[qi]] * (1 - qf) +
+                    #     madimg[order[qi + 1]] * qf)
+                    # qmask = (~qmask) & (areas > 0)
+                    # if qmask:
+                    #     mad_intensity[layer] = madimg[order[qindex[qmask]]]
 
             m = workspace.measurements
             for category, feature_name, measurement in \
@@ -447,7 +447,7 @@ class MeasureObjectIntensityML(cpmmoi.MeasureObjectIntensity):
                  (INTENSITY, MASS_DISPLACEMENT, mass_displacement),
                  (INTENSITY, LOWER_QUARTILE_INTENSITY, lower_quartile_intensity),
                  (INTENSITY, MEDIAN_INTENSITY, median_intensity),
-                 (INTENSITY, MAD_INTENSITY, mad_intensity),
+                 # (INTENSITY, MAD_INTENSITY, mad_intensity),
                  (INTENSITY, UPPER_QUARTILE_INTENSITY, upper_quartile_intensity),
                  (C_LOCATION, LOC_CMI_X, cmi_x),
                  (C_LOCATION, LOC_CMI_Y, cmi_y),

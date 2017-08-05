@@ -14,9 +14,9 @@ Once the module has finished processing, the module display window
 will show the following panels:
 <ul>
 <li><i>Upper left:</i> The raw, original image.</li>
-<li><i>Upper right:</i> The segmented objects as colored image.
-It is important to note that assigned colors are 
-arbitrary; they are used simply to help you distinguish the various objects. </li>
+<li><i>Upper right:</i> The segmented input objects as colored image.
+It is important to note that assigned colors are arbitrary; 
+they are used simply to help you distinguish the various objects. </li>
 <li><i>Lower left:</i> The raw image overlaid with the colored outlines of objects.
 Different colors denote different layers of the multi-layered model.</li>
 <li><i>Lower right:</i> The raw image overlaid with the colored outlines of objects after postprocessing steps.</li>
@@ -31,11 +31,8 @@ object centroids.</li>
 
 <h4>Technical notes</h4>
 
-The module first calculates a trous wavelet (Olivo-Marin, 2002) representation of the image.
-User-defined level of the wavelet is extracted and thresholded to remove noise.
-Next the thresholded wavelet image is smoothed with circular average filter and Gaussian filter.
-Finally, the locations of spots are detected by finding the local maxima from the image.
-These spots are thresholded with user-defined static threshold.
+The module first distributes the input objects between the layers of the multi-layered 'gas of near-circles' by applying
+4 colouring algorithm for map coloring. This provides that close objects will lie in different layers.
 
 <h4>References</h4>
 <ul>
@@ -254,12 +251,9 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         if 'manual'.lower() in self.initialization_type.value.lower():
             # TODO: "labels_in, n = split_objects(labels_in,max_label,radius)"
             initial_phi = self.sort_grayscale_objects_to_layers_coloring(labels_in*labels_in_mask, self.number_of_layers.value)
-            if self.initialization_type == "Seeds (manual)":
-                # TODO: ?nothing
-                pass
-            elif self.initialization_type == "Circular seeds (manual)":
-                # TODO: put circles to centroids of seeds
-                pass
+            if self.initialization_type.value == INIT_MODE_SEEDS_CIRCULAR_MANUAL:
+                raise NotImplementedError(("Initialization type %s is not yet supported"%
+                                       (self.initialization_type.value)))
             initial_phi = np.pad(initial_phi,
                                  ((0,0),(2*maxd,2*maxd),(2*maxd,2*maxd)),
                                  'constant', constant_values=(-1.0,))
@@ -281,10 +275,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         # label multi-layered segmentation
         labeled_image, object_count = scipy.ndimage.label(final_phi > p[1]['alpha']/p[1]['lambda'],
-            structure=[[[0, 0, 0],[0, 0, 0],[0, 0, 0]],
-                       [[0, 1, 0],[1, 1, 1],[0, 1, 0]],
-                       [[0, 0, 0],[0, 0, 0],[0, 0, 0]]])
-        unedited_labels = labeled_image.copy()
+            structure=[[[0, 0, 0], [0, 0, 0], [0, 0, 0]], [[0, 1, 0], [1, 1, 1], [0, 1, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 0]]])
 
         if self.should_save_outlines.value:
             outlines = np.array(
@@ -295,14 +286,14 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
 
         # TODO: remove embedded objects
         labeled_image = self.filter_on_embedded(labeled_image)
+        original_segmentation = labeled_image.copy()  # before any filtering
 
         # TODO: remove small objects
-        size_excluded_labeled_image = labeled_image.copy()
+        # size_excluded_labeled_image = labeled_image.copy()
         labeled_image, small_removed_labels = \
             self.filter_on_size(labeled_image, object_count)
-        size_excluded_labeled_image[labeled_image>0] = 0 # to store outlines of discarded objects on size
+        # size_excluded_labeled_image[labeled_image>0] = 0 # to store outlines of discarded objects on size
         # TODO: merge overlapping objects if JI>0.8
-        # unedited_labels = state after merging
         labeled_image = self.merge_overlapping_objects(labeled_image, 0.8, self.preferred_radius.value)
         unedited_labels = labeled_image.copy()
 
@@ -330,9 +321,8 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         if self.show_window:
             workspace.display_data.image = image
             workspace.display_data.mask = mask
-            # TODO changle labels_in to the output
             workspace.display_data.labels_in = labels_in
-            workspace.display_data.labeled_image = labeled_image
+            workspace.display_data.labeled_image = original_segmentation
             workspace.display_data.filtered_image = filtered_image
 
     # def initialize_phi(self, workspace, extended_image_height, extended_image_width):
@@ -354,6 +344,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
     #     return init_phi
 
     def split_objects(self, labels_in, radius):
+        #TODO implement it
         pass
 
     @staticmethod
@@ -449,15 +440,15 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                         else:
                             # compare the union of an object with the same layer
                             if np.array_equal(np.logical_or(labels[ll,:,:]==Object, labels[lll,:,:]>0), labels[lll,:,:]>0):
-                                discard_incides.insert(Object)
-        for i in range(len(discard_incides)):
-            labels[labels==discard_incides[i]] = 0
+                                discard_incides.append(Object)
+        for ind in discard_incides:
+            labels[labels==ind] = 0
         labels, object_count = scipy.ndimage.label(labels)
         print('{} embedded object were removed.'.format(len(discard_incides)))
         return labels.copy()
 
     def filter_on_size(self, labels, object_count):
-        if object_count>0:
+        if object_count > 0:
             areas = scipy.ndimage.measurements.sum(np.ones(labels.shape),
                                                    labels,
                                                    np.array(np.unique(labels),dtype=np.int32))
@@ -468,59 +459,55 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
             small_removed_labels = labels.copy()
         else:
             small_removed_labels = labels.copy()
-        return (labels, small_removed_labels)
+        return labels, small_removed_labels
 
-    def merge_overlapping_objects(self, labels, JI_threshold=0.8, radius=None):
-        """Merge objects having overlap degree over a certain threshold
-
-        In addition, if the image has a mask, merge the corresponding mask objecst.
+    def merge_overlapping_objects(self, labels, JI_threshold=0.7, radius=None):
+        """Merge objects that overlap and their Jaccard index is over a threshold
         """
-        if radius==None:
+        if radius is None:
             radius = self.preferred_radius.value
         ooindices, ool, oocentroids = self.get_overlapping_object_indices(labels)
         removed_idx_list = []
-        for ooi_index in range(len(ooindices)):
-            ooi = ooindices[ooi_index]
+        for ooi_index, ooi in enumerate(ooindices):
             if ooi not in removed_idx_list:
-                for ooj_index in range(len(ooindices)):
-                    ooj = ooindices[ooj_index]
-                    if ooj not in removed_idx_list and ooi!=ooj:
-                        if (oocentroids[ooi_index][0]-oocentroids[ooj_index])**2+(oocentroids[ooi_index][1]-oocentroids[ooj_index][1])**2 < radius**2*100:
-                            obj_i = labels[ool[ooi_index], :, :]
-                            obj_i[obj_i!=ooi] = 0
-                            obj_i[obj_i==ooi] = 1
-                            obj_j = labels[ool[ooj_index], :, :]
-                            obj_j[obj_j!=ooj] = 0
-                            obj_j[obj_j==ooj] = 1
-                            if jaccard_index(obj_i,obj_j)>JI_threshold:
+                for ooj_index, ooj in enumerate(ooindices):
+                    if ooj not in removed_idx_list and ooi != ooj:
+                        if (oocentroids[ooi_index][0]-oocentroids[ooj_index][0])**2+(oocentroids[ooi_index][1]-oocentroids[ooj_index][1])**2 < radius**2*100:
+                            obj_i = labels[ool[ooi_index], :, :].copy()
+                            obj_i[obj_i != ooi] = 0
+                            obj_i[obj_i == ooi] = 1
+                            obj_j = labels[ool[ooj_index], :, :].copy()
+                            obj_j[obj_j != ooj] = 0
+                            obj_j[obj_j == ooj] = 1
+                            print('JI({},{})={}'.format(ooi,ooj,jaccard_index(obj_i,obj_j)))
+                            if jaccard_index(obj_i, obj_j) > JI_threshold:
                                 merged_object = np.logical_or(obj_i, obj_j)
-                                labels[ool[ooi_index],:,:] -= ooi*(obj_i-merged_object)
-                                labels[ool[ooj_index],:,:] -= ooj*obj_j
+                                labels[ool[ooi_index], :, :] -= ooi*(obj_i-merged_object)
+                                labels[ool[ooj_index], :, :] -= ooj*obj_j
                                 removed_idx_list.append(ooj)
-        return labels # after merging
+        print('{} objects were merged.'.format(len(removed_idx_list)))
+        return labels.copy()
 
     def filter_on_overlap_level(self, labels, JI_threshold, radius=None):
-        if radius==None:
+        if radius is None:
             radius = self.preferred_radius.value
         ooindices, ool, ooc = self.get_overlapping_object_indices(labels)
         removed_indices_list = []
-        for ooi_index in range(len(ooindices)):
-            ooi = ooindices[ooi_index]
+        for ooi_index, ooi in enumerate(ooindices):
             obj_i = labels[ool[ooi_index],:,:]
-            obj_i[obj_i!=ooi] = 0
-            obj_i[obj_i==ooi] = 1
+            obj_i[obj_i != ooi] = 0
+            obj_i[obj_i == ooi] = 1
             if ooi not in removed_indices_list:
                 area_i = obj_i.sum()
-                for ooj_index in range(len(ooindices)):
-                    ooj = ooindices[ooj_index]
+                for ooj_index, ooj in enumerate(ooindices):
                     if ooj not in removed_indices_list and ooi!=ooj:
-                        if (ooc[ooi_index][0]-ooc[ooj_index][0])**2+(ooc[ooi_index][1]-ooc[ooj_index][1])**2<radius**2*100:
-                            obj_j = labels[ool[ooj_index],:,:]
+                        if (ooc[ooi_index][0]-ooc[ooj_index][0])**2+(ooc[ooi_index][1]-ooc[ooj_index][1])**2 < radius**2 * 100:
+                            obj_j = labels[ool[ooj_index], :, :]
                             obj_j[obj_j!=ooj] = 1
                             obj_j[obj_j==ooj] = 0
                             area_j = obj_j.sum()
 
-                            if area_i>area_j:
+                            if area_i > area_j:
                                 bigger_index = ooi
                             else:
                                 bigger_index = ooj
@@ -528,7 +515,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                             if bigger_index in removed_indices_list:
                                 continue
 
-                            if area_i>area_j:
+                            if area_i > area_j:
                                 ji = jaccard_index(obj_j, np.logical_and(obj_i,obj_j))
                             else:
                                 ji = jaccard_index(obj_i, np.logical_and(obj_i, obj_j))
@@ -537,7 +524,7 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
                                 removed_indices_list.append(bigger_index)
 
         for removed_index in removed_indices_list:
-            labels[labels==removed_index] = 0
+            labels[labels == removed_index] = 0
 
         print('{} object(s) were(was) discarded.'.format(len(removed_indices_list)))
         return labels
@@ -693,19 +680,19 @@ class IdentifyPrimaryObjectsMLGOC(cpmi.Identify):
         ool = []
         ooc = []
         for ll in range(layer_num):
-            uv = np.unique(layers[ll,:,:])
+            uv = np.unique(layers[ll, :, :])
             if len(uv) > 1:
                 for obj in uv[1:]:
                     object_on_layer = layers[ll,:,:]
-                    object_on_layer[object_on_layer != obj] = 0
-                    object_on_layer[object_on_layer == obj] = 1
-                    hit_test = np.logical_and(overlap_map == 2, scipy.ndimage.binary_erosion(object_on_layer,
+                    # object_on_layer[object_on_layer != obj] = 0
+                    # object_on_layer[object_on_layer == obj] = 1
+                    hit_test = np.logical_and(overlap_map == 2, scipy.ndimage.binary_erosion(object_on_layer == obj,
                                                             structure=np.array([[0,1,0],[1,1,1],[0,1,0]])) )
                     if hit_test.any():
                         ooindices.append(obj)
                         ool.append(ll)
                         centr = scipy.ndimage.center_of_mass(object_on_layer)
-                        ooc.append([centr])
+                        ooc.append(list(centr))
         return ooindices, ool, ooc
 
 
@@ -720,19 +707,22 @@ def centers_of_ml_labels(labels):
         return []
     else:
         if labels.ndim > 2:
-            centers = np.zeros((len(unique_labels)-1,2))
-            maxind = 0
+            centers = []
+            # centers = np.zeros((len(unique_labels)-1,2))
+            # maxind = 0
             for i in range(labels.shape[0]):
                 layer = labels[i,:,:]
                 layer_unique_values = np.unique(layer)
                 if not len(layer_unique_values) or len(layer_unique_values) == 1 and not layer_unique_values[0]:
                     pass
                 else:
-                    cs = np.array( scipy.ndimage.center_of_mass(layer>0, layer, layer_unique_values[1:]) )
-                    centers[maxind:maxind+len(layer_unique_values)-1, :] = cs
-                    maxind += len(layer_unique_values)-1
+                    cs = scipy.ndimage.center_of_mass(layer>0, layer, layer_unique_values[1:])
+                    # cs = np.array( scipy.ndimage.center_of_mass(layer>0, layer, layer_unique_values[1:]) )
+                    centers += cs
+                    # centers[maxind:maxind+len(layer_unique_values)-1, :] = cs
+                    # maxind += len(layer_unique_values)-1
 
-            return centers
+            return np.array(centers)
         else:
             return np.array( scipy.ndimage.center_of_mass(labels>0,labels,unique_labels[1:]) )
 

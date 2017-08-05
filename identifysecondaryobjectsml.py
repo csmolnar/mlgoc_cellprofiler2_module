@@ -510,7 +510,7 @@ class IdentifySecondaryObjectsML(cpmi.Identify):
             thresholded_image = self.threshold_image(image_name, workspace)
             has_threshold = True
 
-        if isinstance(inobjects,objectsml.ObjectsML):
+        if isinstance(inobjects, objectsml.ObjectsML):
             labels_in = inobjects.unedited_segmented.get_labels()
 
             if self.method == M_DISTANCE_N:
