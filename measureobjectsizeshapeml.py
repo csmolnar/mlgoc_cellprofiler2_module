@@ -185,56 +185,57 @@ class MeasureObjectSizeShapeML(cpmmoss.MeasureObjectSizeShape):
         labels = objectsml.get_labels()
         unique_values = np.unique(labels)
         object_labels = unique_values[unique_values > 0]
-        object_indices = np.zeros((object_labels.max(),), dtype=object_labels.dtype)
         nobjects = len(object_labels)
-
-        # Create objects in ijv format
-        obji = []
-        objj = []
-        objl = []
-        for ind,label in enumerate(object_labels):
-            limg = labels[label-1,:,:]
-            oi,oj = np.where(limg == label)
-            ol = np.full(oi.shape, label, dtype=oi.dtype)
-            obji.append(oi)
-            objj.append(oj)
-            objl.append(ol)
-            object_indices[label-1] = ind
-
-        i = np.concatenate(obji)
-        j = np.concatenate(objj)
-        l = np.concatenate(objl)
-            
-        centers, eccentricity, major_axis_length, minor_axis_length, \
-            theta, compactness =\
-            ellipse_from_second_moments_ijv(i, j, 1, l, object_labels, True)
-        self.record_measurement(workspace, object_name,
-                                F_ECCENTRICITY, eccentricity)
-        self.record_measurement(workspace, object_name,
-                                F_MAJOR_AXIS_LENGTH, major_axis_length)
-        self.record_measurement(workspace, object_name,
-                                F_MINOR_AXIS_LENGTH, minor_axis_length)
-        self.record_measurement(workspace, object_name, F_ORIENTATION,
-                                theta * 180 / np.pi)
-        self.record_measurement(workspace, object_name, F_COMPACTNESS,
-                                compactness)
-
-        mcenter_x = np.zeros(nobjects)
-        mcenter_y = np.zeros(nobjects)
-        mextent = np.zeros(nobjects)
-        mperimeters = np.zeros(nobjects)
-        msolidity = np.zeros(nobjects)
-        euler = np.zeros(nobjects)
-        max_radius = np.zeros(nobjects)
-        median_radius = np.zeros(nobjects)
-        mean_radius = np.zeros(nobjects)
-        min_feret_diameter = np.zeros(nobjects)
-        max_feret_diameter = np.zeros(nobjects)
-        zernike_numbers = self.get_zernike_numbers()
-        zf = {}
-        for n,m in zernike_numbers:
-            zf[(n,m)] = np.zeros(nobjects)
         if nobjects > 0:
+            object_indices = np.zeros((object_labels.max(),), dtype=object_labels.dtype)
+
+            # Create objects in ijv format
+            obji = []
+            objj = []
+            objl = []
+            for ind,label in enumerate(object_labels):
+                limg = labels[label-1,:,:]
+                oi,oj = np.where(limg == label)
+                ol = np.full(oi.shape, label, dtype=oi.dtype)
+                obji.append(oi)
+                objj.append(oj)
+                objl.append(ol)
+                object_indices[label-1] = ind
+
+            i = np.concatenate(obji)
+            j = np.concatenate(objj)
+            l = np.concatenate(objl)
+            
+            centers, eccentricity, major_axis_length, minor_axis_length, \
+                theta, compactness =\
+                ellipse_from_second_moments_ijv(i, j, 1, l, object_labels, True)
+            self.record_measurement(workspace, object_name,
+                                    F_ECCENTRICITY, eccentricity)
+            self.record_measurement(workspace, object_name,
+                                    F_MAJOR_AXIS_LENGTH, major_axis_length)
+            self.record_measurement(workspace, object_name,
+                                    F_MINOR_AXIS_LENGTH, minor_axis_length)
+            self.record_measurement(workspace, object_name, F_ORIENTATION,
+                                    theta * 180 / np.pi)
+            self.record_measurement(workspace, object_name, F_COMPACTNESS,
+                                    compactness)
+
+            mcenter_x = np.zeros(nobjects)
+            mcenter_y = np.zeros(nobjects)
+            mextent = np.zeros(nobjects)
+            mperimeters = np.zeros(nobjects)
+            msolidity = np.zeros(nobjects)
+            euler = np.zeros(nobjects)
+            max_radius = np.zeros(nobjects)
+            median_radius = np.zeros(nobjects)
+            mean_radius = np.zeros(nobjects)
+            min_feret_diameter = np.zeros(nobjects)
+            max_feret_diameter = np.zeros(nobjects)
+            zernike_numbers = self.get_zernike_numbers()
+            zf = {}
+            for n,m in zernike_numbers:
+                zf[(n,m)] = np.zeros(nobjects)
+
             ijv = np.zeros((i.shape[0],3),dtype=i.dtype)
             ijv[:,0] = i
             ijv[:,1] = j
@@ -286,22 +287,22 @@ class MeasureObjectSizeShapeML(cpmmoss.MeasureObjectSizeShape):
             min_feret_diameter, max_feret_diameter = \
                 feret_diameter(chulls, chull_counts, object_labels)
 
+            for f, m in ([(F_AREA, areas),
+                          (F_CENTER_X, mcenter_x),
+                          (F_CENTER_Y, mcenter_y),
+                          (F_EXTENT, mextent),
+                          (F_PERIMETER, mperimeters),
+                          (F_SOLIDITY, msolidity),
+                          (F_FORM_FACTOR, ff),
+                          (F_EULER_NUMBER, euler),
+                          (F_MAXIMUM_RADIUS, max_radius),
+                          (F_MEAN_RADIUS, mean_radius),
+                          (F_MEDIAN_RADIUS, median_radius),
+                          (F_MIN_FERET_DIAMETER, min_feret_diameter),
+                          (F_MAX_FERET_DIAMETER, max_feret_diameter)] +
+                         [(self.get_zernike_name((n,m)), zf[(n,m)])
+                          for n,m in zernike_numbers]):
+                self.record_measurement(workspace, object_name, f, m)
+
         else:
             ff = np.zeros(0)
-
-        for f, m in ([(F_AREA, areas),
-                      (F_CENTER_X, mcenter_x),
-                      (F_CENTER_Y, mcenter_y),
-                      (F_EXTENT, mextent),
-                      (F_PERIMETER, mperimeters),
-                      (F_SOLIDITY, msolidity),
-                      (F_FORM_FACTOR, ff),
-                      (F_EULER_NUMBER, euler),
-                      (F_MAXIMUM_RADIUS, max_radius),
-                      (F_MEAN_RADIUS, mean_radius),
-                      (F_MEDIAN_RADIUS, median_radius),
-                      (F_MIN_FERET_DIAMETER, min_feret_diameter),
-                      (F_MAX_FERET_DIAMETER, max_feret_diameter)] +
-                     [(self.get_zernike_name((n,m)), zf[(n,m)])
-                       for n,m in zernike_numbers]):
-            self.record_measurement(workspace, object_name, f, m)
